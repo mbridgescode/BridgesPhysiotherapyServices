@@ -1,0 +1,67 @@
+.calendar-shell {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background-color: rgba(15, 18, 36, 0.75);
+  box-shadow: 0 30px 55px rgba(5, 5, 15, 0.45);
+  padding: 1rem;
+}
+
+.rbc-calendar {
+  background-color: transparent;
+  color: #f8fafc;
+  font-family: 'Inter', sans-serif;
+}
+
+.rbc-toolbar {
+  margin-bottom: 1rem;
+  color: #f8fafc;
+}
+
+.rbc-toolbar button {
+  border-radius: 999px;
+  padding: 0.35rem 1rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  border: none;
+  text-transform: capitalize;
+  transition: background 200ms ease, color 200ms ease, box-shadow 200ms ease;
+}
+
+.rbc-toolbar button:hover,
+.rbc-toolbar button:focus {
+  background: rgba(99, 102, 241, 0.3);
+  color: #fff;
+}
+
+.rbc-toolbar button.rbc-active {
+  background-image: linear-gradient(120deg, #a855f7, #6366f1);
+  color: #fff;
+  box-shadow: 0 12px 30px rgba(99, 102, 241, 0.4);
+}
+
+.rbc-header,
+.rbc-label {
+  color: #cbd5f5;
+}
+
+.rbc-time-slot,
+.rbc-time-header,
+.rbc-time-view,
+.rbc-day-bg,
+.rbc-row {
+  border-color: rgba(148, 163, 184, 0.08);
+}
+
+.rbc-time-content > * + * > *, 
+.rbc-time-header-content {
+  border-left-color: rgba(148, 163, 184, 0.08);
+}
+
+.rbc-today {
+  background-color: rgba(168, 85, 247, 0.08);
+}
+
+.rbc-event {
+  border: none;
+}

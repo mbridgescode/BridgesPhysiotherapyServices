@@ -1,0 +1,178 @@
+/* src/styles/TUICalendar.css */
+
+/* Base variables for consistent theming */
+:root {
+  --calendar-background: #333;
+  --calendar-text-color: #fff;
+  --calendar-border-color: #555;
+  --calendar-button-background: #444;
+  --calendar-highlight-background: #5a5a5a;
+  --calendar-border: #fff;
+  --calendar-hover-background: #666;
+  --calendar-special-day-color: #ff4040;
+}
+
+/* General Calendar Styles */
+#calendar {
+  background-color: var(--calendar-background);
+  color: var(--calendar-text-color);
+  border: 1px solid var(--calendar-border-color);
+}
+
+/* Specific Appointment Colors */
+.appointment-purple {
+  background-color: #f152ff !important;
+  color: #fff !important;
+  border-color: #000 !important;
+}
+
+.appointment-skyblue {
+  background-color: #74fff8 !important;
+  color: #fff !important;
+  border-color: #000 !important;
+}
+
+.appointment-blue {
+  background-color: #0400ff !important;
+  color: #fff !important;
+  border-color: #000 !important;
+}
+
+/* Grid Lines Visibility */
+#calendar .tui-full-calendar-weekday-grid-line,
+#calendar .tui-full-calendar-daygrid-cell,
+#calendar .tui-full-calendar-timegrid-hour {
+  border-right: 1px solid var(--calendar-border);
+  border-bottom: 1px solid var(--calendar-border);
+}
+
+/* Uniform Styling for Calendar Layout Components */
+#calendar .tui-full-calendar-layout,
+#calendar .tui-full-calendar-week-container,
+#calendar .tui-full-calendar-dayname-layout,
+#calendar .tui-full-calendar-dayname-container,
+#calendar .tui-full-calendar-vlayout-area,
+#calendar .tui-full-calendar-timegrid-container,
+#calendar .tui-full-calendar-timegrid-left,
+#calendar .tui-full-calendar-timegrid-right,
+#calendar .tui-full-calendar-timegrid-hour,
+#calendar .tui-full-calendar-timegrid-timezone,
+#calendar .tui-full-calendar-timegrid-timezone-label-container,
+#calendar .tui-full-calendar-weekday-grid-line,
+#calendar .tui-full-calendar-time-date {
+  background-color: var(--calendar-background);
+  color: var(--calendar-text-color);
+}
+
+/* Text Styling for Dates and Times */
+#calendar .tui-full-calendar-dayname-date,
+#calendar .tui-full-calendar-dayname-name,
+#calendar .tui-full-calendar-timegrid-hour span {
+  color: var(--calendar-text-color);
+  display: block;
+  padding-top: 5px;
+}
+
+/* Month and Year Display */
+.calendar-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background-color: var(--calendar-background);
+  border-bottom: 1px solid var(--calendar-border-color);
+  margin-bottom: 10px;
+}
+
+.calendar-month {
+  font-size: 1.5rem;
+  color: var(--calendar-text-color);
+  margin-bottom: 10px;
+}
+
+.calendar-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.calendar-nav-button {
+  background-color: var(--calendar-highlight-background);
+  color: var(--calendar-text-color);
+  border: 1px solid var(--calendar-border-color);
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background-color 0.3s;
+}
+
+.calendar-nav-button:hover {
+  background-color: var(--calendar-hover-background);
+}
+
+.calendar-container {
+  height: 800px;
+  padding: 10px;
+  background-color: var(--calendar-background);
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Ensure Text in Month View is Clearly Visible */
+#calendar .tui-full-calendar-month-view .tui-full-calendar-weekday-grid-date {
+  color: var(--calendar-text-color);
+}
+
+/* Highlight the First Row's Text in a More Visible Color if it's Red */
+#calendar
+  .tui-full-calendar-month-view
+  .tui-full-calendar-weekday-grid-date:first-child {
+  color: var(--calendar-special-day-color);
+}
+
+/* Popup Styles to Match the App Theme */
+.tui-full-calendar-popup-container {
+  background-color: #333 !important;
+  color: #fff !important;
+  border-radius: 8px;
+  padding: 15px;
+  width: 400px;
+}
+
+.tui-full-calendar-popup-container .tui-full-calendar-popup-section {
+  color: #fff !important;
+}
+
+.tui-full-calendar-popup-container .tui-full-calendar-popup-title {
+  font-size: 1.2em;
+  font-weight: bold;
+  color: #fff !important;
+}
+
+.tui-full-calendar-popup-container .tui-full-calendar-popup-content {
+  color: #fff !important;
+}
+
+/* Ensure Buttons in the Popup Also Match the Theme */
+.tui-full-calendar-popup-container .tui-full-calendar-popup-buttons button {
+  background-color: #444 !important;
+  color: #fff !important;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 15px;
+  margin-left: 5px;
+  transition: background-color 0.3s;
+}
+
+.tui-full-calendar-popup-container
+  .tui-full-calendar-popup-buttons
+  button:hover {
+  background-color: #555 !important;
+}
+
+/* Custom Popup Styles */
+.MuiModal-root {
+  z-index: 1300;
+}
