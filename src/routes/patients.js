@@ -14,6 +14,18 @@ const { buildTokensFromSearchQuery } = require('../utils/patientSecurity');
 
 const router = express.Router();
 
+const toPlainObject = (doc) => {
+  if (!doc) {
+    return doc;
+  }
+
+  if (typeof doc.toObject === 'function') {
+    return doc.toObject({ getters: true, virtuals: true });
+  }
+
+  return doc;
+};
+
 const normalizePatientId = (value) => {
   const numeric = Number(value);
   return Number.isNaN(numeric) ? null : numeric;
@@ -113,19 +125,24 @@ router.get(
         query.searchTokens = { $all: searchTokens };
       }
 
-      const patients = await Patient.find(query)
+      const patientDocs = await Patient.find(query)
         .limit(Number(limit))
         .sort({ updatedAt: -1 })
-        .populate('primaryTherapist', 'username email role employeeID')
-        .lean({ getters: true, virtuals: true });
+        .populate('primaryTherapist', 'username email role employeeID');
+
+      const patients = patientDocs.map(toPlainObject);
 
       const patientIds = patients.map((patient) => patient.patient_id);
 
-      const [appointments, invoices, notes] = await Promise.all([
-        Appointment.find({ patient_id: { $in: patientIds } }).lean({ getters: true, virtuals: true }),
-        Invoice.find({ patient_id: { $in: patientIds } }).lean({ getters: true, virtuals: true }),
-        Note.find({ patient_id: { $in: patientIds } }).lean({ getters: true, virtuals: true }),
+      const [appointmentDocs, invoiceDocs, noteDocs] = await Promise.all([
+        Appointment.find({ patient_id: { $in: patientIds } }),
+        Invoice.find({ patient_id: { $in: patientIds } }),
+        Note.find({ patient_id: { $in: patientIds } }),
       ]);
+
+      const appointments = appointmentDocs.map(toPlainObject);
+      const invoices = invoiceDocs.map(toPlainObject);
+      const notes = noteDocs.map(toPlainObject);
 
       const appointmentsByPatient = appointments.reduce((acc, appointment) => {
         acc[appointment.patient_id] = acc[appointment.patient_id] || [];
