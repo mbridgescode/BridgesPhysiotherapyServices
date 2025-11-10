@@ -639,7 +639,14 @@ router.post(
     }
 
     const normalizedOutcome = typeof outcome === 'string' ? outcome.toLowerCase() : '';
-    const allowedOutcomes = ['completed', 'cancelled_on_the_day', 'cancelled_same_day', 'other'];
+    const allowedOutcomes = [
+      'completed',
+      'completed_manual',
+      'cancelled_on_the_day',
+      'cancelled_same_day',
+      'cancelled_reschedule',
+      'other',
+    ];
     if (!allowedOutcomes.includes(normalizedOutcome)) {
       return res.status(400).json({ success: false, message: 'Invalid outcome selected' });
     }
@@ -658,16 +665,20 @@ router.post(
 
       const update = {
         completion_status: effectiveOutcome,
-        completion_note: effectiveOutcome === 'other' ? note?.trim() : '',
+        completion_note: ['other', 'cancelled_reschedule'].includes(effectiveOutcome) ? note?.trim() : '',
         updatedBy: req.user.id,
       };
 
-      if (effectiveOutcome === 'completed') {
+      if (effectiveOutcome === 'completed' || effectiveOutcome === 'completed_manual') {
         update.completed = true;
         update.status = 'completed';
       } else if (effectiveOutcome === 'cancelled_same_day') {
         update.completed = false;
         update.status = 'cancelled_same_day';
+        update.cancelled_at = new Date();
+      } else if (effectiveOutcome === 'cancelled_reschedule') {
+        update.completed = false;
+        update.status = 'cancelled';
         update.cancelled_at = new Date();
       } else {
         update.completed = false;
@@ -680,11 +691,11 @@ router.post(
       const patient = await Patient.findOne({ patient_id: appointment.patient_id });
 
       let autoInvoiceResult = null;
-      if (
-        patient
+      const shouldAutoInvoice = patient
         && patient.billing_mode !== 'monthly'
-        && (effectiveOutcome === 'completed' || effectiveOutcome === 'cancelled_same_day')
-      ) {
+        && (effectiveOutcome === 'completed' || effectiveOutcome === 'cancelled_same_day');
+
+      if (shouldAutoInvoice) {
         try {
           autoInvoiceResult = await createAutomaticInvoice({
             appointment,

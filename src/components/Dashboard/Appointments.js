@@ -35,6 +35,7 @@ import { AppointmentsContext } from '../../context/AppointmentsContext';
 import Autocomplete from '@mui/material/Autocomplete';
 import useTherapists from '../../hooks/useTherapists';
 import DataTable from '../common/DataTable';
+import InvoiceBuilderDialog from '../invoices/InvoiceBuilderDialog';
 
 const useStyles = makeStyles((theme) => ({
   card: {
@@ -71,8 +72,10 @@ const buildPatientLabel = (patient) => {
 };
 
 const COMPLETION_OUTCOME_OPTIONS = [
-  { value: 'completed', label: 'Completed (patient seen)' },
+  { value: 'completed', label: 'Completed (auto invoice)' },
+  { value: 'completed_manual', label: 'Completed (adjust invoice)' },
   { value: 'cancelled_same_day', label: 'Cancelled on the day (50% fee)' },
+  { value: 'cancelled_reschedule', label: 'Cancelled (delete or reschedule)' },
   { value: 'other', label: 'Other (add note)' },
 ];
 
@@ -83,8 +86,12 @@ const formatStatusLabel = (status) => {
   switch (status) {
     case 'completed':
       return 'Completed';
+    case 'completed_manual':
+      return 'Completed (adjusted invoice)';
     case 'cancelled_same_day':
       return 'Cancelled on the day';
+    case 'cancelled_reschedule':
+      return 'Cancelled (reschedule)';
     case 'other':
       return 'Other';
     case 'cancelled':
@@ -132,6 +139,10 @@ const Appointments = ({ userData }) => {
     note: '',
     submitting: false,
     error: '',
+  });
+  const [manualInvoiceDialog, setManualInvoiceDialog] = useState({
+    open: false,
+    appointment: null,
   });
 
   useEffect(() => {
@@ -222,6 +233,52 @@ const Appointments = ({ userData }) => {
     }
   };
 
+  const performCompletionUpdate = useCallback(
+    async ({ appointmentId, outcome, note = '' }) => {
+      const response = await apiClient.post('/api/appointments/complete', {
+        appointment_id: appointmentId,
+        outcome,
+        note,
+      });
+      const updated = response.data?.appointment;
+      if (updated) {
+        setAppointments((prevAppointments) =>
+          prevAppointments.map((appointment) =>
+            appointment.appointment_id === updated.appointment_id
+              ? { ...appointment, ...updated }
+              : appointment,
+          ),
+        );
+      }
+      setSubmitSuccess('Appointment updated');
+      refreshAppointments();
+      return response.data;
+    },
+    [refreshAppointments, setAppointments],
+  );
+
+  const closeManualInvoiceDialog = useCallback(() => {
+    setManualInvoiceDialog({ open: false, appointment: null });
+  }, []);
+
+  const handleManualInvoiceCreated = useCallback(async () => {
+    const appointment = manualInvoiceDialog.appointment;
+    if (!appointment) {
+      closeManualInvoiceDialog();
+      return;
+    }
+    try {
+      await performCompletionUpdate({
+        appointmentId: appointment.appointment_id,
+        outcome: 'completed_manual',
+      });
+    } catch (err) {
+      console.error('Failed to finalize manual invoice completion', err);
+    } finally {
+      closeManualInvoiceDialog();
+    }
+  }, [closeManualInvoiceDialog, manualInvoiceDialog.appointment, performCompletionUpdate]);
+
   const openCompletionDialog = (appointment) => {
     const allowedValues = COMPLETION_OUTCOME_OPTIONS.map((option) => option.value);
     const nextOutcome = allowedValues.includes(appointment.completion_status)
@@ -261,26 +318,22 @@ const Appointments = ({ userData }) => {
       setCompletionDialog((prev) => ({ ...prev, error: 'Please provide a note for this outcome.' }));
       return;
     }
+    if (completionDialog.outcome === 'completed_manual') {
+      closeCompletionDialog();
+      setManualInvoiceDialog({
+        open: true,
+        appointment: completionDialog.appointment,
+      });
+      return;
+    }
     setCompletionDialog((prev) => ({ ...prev, submitting: true, error: '' }));
     try {
-      const response = await apiClient.post('/api/appointments/complete', {
-        appointment_id: completionDialog.appointment.appointment_id,
+      await performCompletionUpdate({
+        appointmentId: completionDialog.appointment.appointment_id,
         outcome: completionDialog.outcome,
         note: completionDialog.note,
       });
-      const updated = response.data?.appointment;
-      if (updated) {
-        setAppointments((prevAppointments) =>
-          prevAppointments.map((appointment) =>
-            appointment.appointment_id === updated.appointment_id
-              ? { ...appointment, ...updated }
-              : appointment,
-          ),
-        );
-      }
-      setSubmitSuccess('Appointment updated');
       closeCompletionDialog();
-      refreshAppointments();
     } catch (err) {
       const message = err?.response?.data?.message || 'Unable to update appointment outcome';
       setCompletionDialog((prev) => ({ ...prev, error: message }));
@@ -1177,6 +1230,19 @@ const Appointments = ({ userData }) => {
           </Button>
         </DialogActions>
       </Dialog>
+      <InvoiceBuilderDialog
+        open={manualInvoiceDialog.open}
+        onClose={closeManualInvoiceDialog}
+        onSuccess={handleManualInvoiceCreated}
+        initialPatientId={manualInvoiceDialog.appointment?.patient_id}
+        initialAppointmentIds={
+          manualInvoiceDialog.appointment
+            ? [manualInvoiceDialog.appointment.appointment_id]
+            : []
+        }
+        lockPatient
+        title="Adjust Invoice"
+      />
       <Snackbar
         open={Boolean(submitSuccess)}
         autoHideDuration={4000}

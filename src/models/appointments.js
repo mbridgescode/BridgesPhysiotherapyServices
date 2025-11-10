@@ -46,7 +46,7 @@ const appointmentSchema = new Schema({
   },
   completion_status: {
     type: String,
-    enum: ['scheduled', 'completed', 'cancelled_same_day', 'other'],
+    enum: ['scheduled', 'completed', 'completed_manual', 'cancelled_same_day', 'cancelled_reschedule', 'other'],
     default: 'scheduled',
   },
   completion_note: {

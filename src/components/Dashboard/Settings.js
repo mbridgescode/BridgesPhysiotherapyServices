@@ -832,7 +832,7 @@ const Settings = () => {
     },
   ];
 
-  const handleSave = async () => {
+const handleSave = async () => {
     if (!isAdmin) {
       return;
     }
@@ -849,8 +849,104 @@ const Settings = () => {
     }
   };
 
+  const renderTwoFactorCard = () => (
+    <Card>
+      <CardContent>
+        <Typography variant="h5" gutterBottom>
+          Two-Factor Authentication
+        </Typography>
+        <Typography variant="body2" color="text.secondary" gutterBottom>
+          Secure your account with an authenticator app before accessing patient or financial data.
+        </Typography>
+        <Typography variant="body1" sx={{ mt: 2 }}>
+          Status:{' '}
+          <strong>{twoFactorState.enabled ? 'Enabled' : 'Disabled'}</strong>
+        </Typography>
+        {twoFactorState.error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {twoFactorState.error}
+          </Alert>
+        )}
+        {twoFactorState.success && (
+          <Alert severity="success" sx={{ mt: 2 }}>
+            {twoFactorState.success}
+          </Alert>
+        )}
+        {!twoFactorState.enabled ? (
+          <Box mt={3} display="flex" flexDirection="column" gap={2}>
+            <Button
+              variant="contained"
+              onClick={handleGenerateTwoFactorSecret}
+              disabled={twoFactorState.loading}
+            >
+              {twoFactorState.secret ? 'Regenerate Setup Code' : 'Generate Setup Code'}
+            </Button>
+            {twoFactorState.secret && (
+              <>
+                <Typography variant="body2">
+                  Secret Key:{' '}
+                  <strong>{twoFactorState.secret}</strong>
+                </Typography>
+                {twoFactorState.otpauthUrl && (
+                  <Typography variant="caption" color="text.secondary">
+                    otpauth:// URI: {twoFactorState.otpauthUrl}
+                  </Typography>
+                )}
+                <TextField
+                  label="Authenticator Code"
+                  value={twoFactorState.code}
+                  onChange={(event) => setTwoFactorState((prev) => ({
+                    ...prev,
+                    code: event.target.value,
+                  }))}
+                  helperText="Enter the 6-digit code from your authenticator app to enable two-factor authentication."
+                  fullWidth
+                />
+                <Button
+                  variant="outlined"
+                  onClick={handleVerifyTwoFactor}
+                  disabled={twoFactorState.loading || !twoFactorState.code.trim()}
+                >
+                  Enable Two-Factor Authentication
+                </Button>
+              </>
+            )}
+          </Box>
+        ) : (
+          <Box mt={3} display="flex" flexDirection="column" gap={2}>
+            <TextField
+              label="Authenticator Code"
+              value={twoFactorState.code}
+              onChange={(event) => setTwoFactorState((prev) => ({
+                ...prev,
+                code: event.target.value,
+              }))}
+              helperText="Enter a current authenticator code to confirm disabling two-factor authentication."
+              fullWidth
+            />
+            <Button
+              variant="outlined"
+              color="warning"
+              onClick={handleDisableTwoFactor}
+              disabled={twoFactorState.loading || !twoFactorState.code.trim()}
+            >
+              Disable Two-Factor Authentication
+            </Button>
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+
   if (!isAdmin) {
-    return <Typography>You need administrator rights to update clinic settings.</Typography>;
+    return (
+      <Box display="flex" flexDirection="column" gap={3}>
+        {renderTwoFactorCard()}
+        <Alert severity="info">
+          Clinic settings and templates can only be edited by administrators.
+        </Alert>
+      </Box>
+    );
   }
 
   if (loading) {
@@ -1136,93 +1232,7 @@ const Settings = () => {
           />
         </CardContent>
       </Card>
-
-    <Card>
-      <CardContent>
-        <Typography variant="h5" gutterBottom>
-            Two-Factor Authentication
-          </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Protect administrator accounts with an authenticator app before accessing sensitive client data.
-          </Typography>
-          <Typography variant="body1" sx={{ mt: 2 }}>
-            Status:{' '}
-            <strong>{twoFactorState.enabled ? 'Enabled' : 'Disabled'}</strong>
-          </Typography>
-          {twoFactorState.error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {twoFactorState.error}
-            </Alert>
-          )}
-          {twoFactorState.success && (
-            <Alert severity="success" sx={{ mt: 2 }}>
-              {twoFactorState.success}
-            </Alert>
-          )}
-          {!twoFactorState.enabled ? (
-            <Box mt={3} display="flex" flexDirection="column" gap={2}>
-              <Button
-                variant="contained"
-                onClick={handleGenerateTwoFactorSecret}
-                disabled={twoFactorState.loading}
-              >
-                {twoFactorState.secret ? 'Regenerate Setup Code' : 'Generate Setup Code'}
-              </Button>
-              {twoFactorState.secret && (
-                <>
-                  <Typography variant="body2">
-                    Secret Key:{' '}
-                    <strong>{twoFactorState.secret}</strong>
-                  </Typography>
-                  {twoFactorState.otpauthUrl && (
-                    <Typography variant="caption" color="text.secondary">
-                      otpauth:// URI: {twoFactorState.otpauthUrl}
-                    </Typography>
-                  )}
-                  <TextField
-                    label="Authenticator Code"
-                    value={twoFactorState.code}
-                    onChange={(event) => setTwoFactorState((prev) => ({
-                      ...prev,
-                      code: event.target.value,
-                    }))}
-                    helperText="Enter the 6-digit code from your authenticator app to enable two-factor authentication."
-                    fullWidth
-                  />
-                  <Button
-                    variant="outlined"
-                    onClick={handleVerifyTwoFactor}
-                    disabled={twoFactorState.loading || !twoFactorState.code.trim()}
-                  >
-                    Enable Two-Factor Authentication
-                  </Button>
-                </>
-              )}
-            </Box>
-          ) : (
-            <Box mt={3} display="flex" flexDirection="column" gap={2}>
-              <TextField
-                label="Authenticator Code"
-                value={twoFactorState.code}
-                onChange={(event) => setTwoFactorState((prev) => ({
-                  ...prev,
-                  code: event.target.value,
-                }))}
-                helperText="Enter a current authenticator code to confirm disabling two-factor authentication."
-                fullWidth
-              />
-              <Button
-                variant="outlined"
-                color="warning"
-                onClick={handleDisableTwoFactor}
-                disabled={twoFactorState.loading || !twoFactorState.code.trim()}
-              >
-                Disable Two-Factor Authentication
-              </Button>
-            </Box>
-          )}
-        </CardContent>
-      </Card>
+      {renderTwoFactorCard()}
 
       {canManageTemplates && (
         <Card id="treatment-note-templates">

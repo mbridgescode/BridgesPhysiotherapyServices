@@ -400,16 +400,31 @@ const ProfitLoss = () => {
               mt: 2,
             }}
           >
-            {PRESET_FILTERS.map((preset) => (
-              <Button
-                key={preset.key}
-                size="small"
-                variant={activePreset === preset.key ? 'contained' : 'outlined'}
-                onClick={() => applyPreset(preset.key)}
-              >
-                {preset.label}
-              </Button>
-            ))}
+            {PRESET_FILTERS.map((preset) => {
+              const isActive = activePreset === preset.key;
+              return (
+                <Button
+                  key={preset.key}
+                  size="small"
+                  disableElevation
+                  variant={isActive ? 'contained' : 'outlined'}
+                  onClick={() => applyPreset(preset.key)}
+                  sx={{
+                    borderRadius: 999,
+                    px: 2.5,
+                    color: isActive ? '#fff' : (theme) => theme.palette.text.primary,
+                    backgroundColor: isActive ? 'primary.main' : 'transparent',
+                    borderColor: 'primary.main',
+                    '&:hover': {
+                      backgroundColor: isActive ? 'primary.dark' : 'rgba(99,102,241,0.12)',
+                      borderColor: 'primary.dark',
+                    },
+                  }}
+                >
+                  {preset.label}
+                </Button>
+              );
+            })}
           </Box>
         </CardContent>
       </Card>
