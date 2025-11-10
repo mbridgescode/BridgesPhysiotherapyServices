@@ -97,9 +97,23 @@ npm run build
 - `npm run start:api` replaces the previous collection of ad-hoc scripts for running the backend locally.
 - The `/healthz` route exposes build metadata for monitoring, and Helmet/CORS/Cookie security hardening is enabled by default (`ENFORCE_HTTPS=true` outside of development).
 
+## Database Validators
+
+- Run `python scripts/db/sync_validators.py` whenever you change a Mongoose model. The script regenerates the Atlas `collMod` commands (`apply_validators_commands.json`, ignored by git) and refreshes `../bridges_physiotherapy_services_db_admin/schema.json`.
+- Apply the validators by pointing `mongodb_playground.py` at the generated command file, for example:
+
+  ```bash
+  python mongodb_playground.py \
+    --collection users \
+    --mongo-uri "$MONGODB_URI" \
+    --database bridges_physiotherapy_db \
+    --db-command-file apply_validators_commands.json \
+    --limit 1
+  ```
+
 ## Scripts
 
-- `npm start` – CRA dev server.
+- `npm start` - CRA dev server.
 - `npm run build` – production build of the SPA.
 - `npm run start:api` – start the Express API locally (useful alongside `npm start`).
 - `npm run eject` – CRA eject (irreversible).
