@@ -7,7 +7,14 @@ import {
   useNavigate,
   Navigate,
 } from 'react-router-dom';
-import { Box, CssBaseline, CircularProgress } from '@mui/material';
+import {
+  Box,
+  CssBaseline,
+  CircularProgress,
+  IconButton,
+  Typography,
+  useMediaQuery,
+} from '@mui/material';
 import Sidebar, { SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from '../Sidebar';
 import Home from './Home';
 import Settings from './Settings';
@@ -19,30 +26,37 @@ import PatientDetails from './PatientDetails';
 import Invoices from './Invoices';
 import AuditLog from './AuditLog';
 import Admin from './Admin';
-import { styled } from '@mui/material/styles';
+import { styled, useTheme } from '@mui/material/styles';
 import apiClient from '../../utils/apiClient';
 import { emitAuthTokenChanged } from '../../utils/authEvents';
+import MenuIcon from '@mui/icons-material/Menu';
 
 const Main = styled('main', {
-  shouldForwardProp: (prop) => prop !== 'drawerWidth',
-})(({ theme, drawerWidth }) => ({
+  shouldForwardProp: (prop) => prop !== 'drawerWidth' && prop !== 'isMobile',
+})(({ theme, drawerWidth, isMobile }) => ({
   flexGrow: 1,
-  padding: theme.spacing(3),
-  marginLeft: `${drawerWidth}px`,
+  padding: theme.spacing(isMobile ? 2 : 3),
+  marginLeft: isMobile ? 0 : `${drawerWidth}px`,
   minHeight: '100vh',
   background: 'transparent',
   display: 'flex',
   justifyContent: 'flex-start',
   alignItems: 'stretch',
-  width: `calc(100% - ${drawerWidth}px)`,
+  width: isMobile ? '100%' : `calc(100% - ${drawerWidth}px)`,
   boxSizing: 'border-box',
   overflow: 'hidden',
   transition: 'margin-left 0.2s ease',
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(1.5),
+  },
 }));
 
 const Dashboard = () => {
   const [userData, setUserData] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -62,11 +76,17 @@ const Dashboard = () => {
     fetchData();
   }, [navigate, emitAuthTokenChanged]);
 
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileDrawerOpen(false);
+    }
+  }, [isMobile]);
+
   if (!userData) {
     return <CircularProgress />;
   }
 
-  const drawerWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
+  const drawerWidth = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH);
 
   return (
     <Box
@@ -80,8 +100,11 @@ const Dashboard = () => {
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+        variant={isMobile ? 'temporary' : 'permanent'}
+        mobileOpen={mobileDrawerOpen}
+        onMobileClose={() => setMobileDrawerOpen(false)}
       />
-      <Main drawerWidth={drawerWidth}>
+      <Main drawerWidth={drawerWidth} isMobile={isMobile}>
         <Box
           sx={{
             width: '100%',
@@ -95,6 +118,28 @@ const Dashboard = () => {
             overflow: 'hidden',
           }}
         >
+          {isMobile && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                mb: 2,
+              }}
+            >
+              <IconButton
+                color="inherit"
+                onClick={() => setMobileDrawerOpen(true)}
+                aria-label="Open navigation"
+              >
+                <MenuIcon />
+              </IconButton>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {userData?.username ? `Hi, ${userData.username}` : 'Dashboard'}
+              </Typography>
+              <Box sx={{ width: 40 }} />
+            </Box>
+          )}
           <Routes>
             <Route index element={<Home userData={userData} />} />
             <Route path="appointments" element={<Appointments userData={userData} />} />

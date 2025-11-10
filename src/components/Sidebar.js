@@ -62,7 +62,13 @@ const DrawerStyled = styled(Drawer, {
   };
 });
 
-const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
+const Sidebar = ({
+  collapsed = false,
+  onToggleCollapse = () => {},
+  variant = 'permanent',
+  mobileOpen = false,
+  onMobileClose = () => {},
+}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { userData } = useContext(UserContext);
@@ -125,19 +131,34 @@ const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
     },
   ];
 
+  const effectiveCollapsed = variant === 'temporary' ? false : collapsed;
+
   return (
     <>
       <CssBaseline />
-      <DrawerStyled variant="permanent" PaperProps={{ elevation: 0 }} collapsed={collapsed}>
+      <DrawerStyled
+        variant={variant}
+        PaperProps={{ elevation: 0 }}
+        collapsed={effectiveCollapsed}
+        open={variant === 'temporary' ? mobileOpen : true}
+        onClose={variant === 'temporary' ? onMobileClose : undefined}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: {
+            xs: variant === 'temporary' ? 'block' : 'none',
+            md: 'block',
+          },
+        }}
+      >
         <Box
           sx={{
             width: '100%',
-            px: collapsed ? 0 : 2,
+            px: effectiveCollapsed ? 0 : 2,
             pb: 2,
             display: 'flex',
-            flexDirection: collapsed ? 'column' : 'row',
+            flexDirection: effectiveCollapsed ? 'column' : 'row',
             alignItems: 'center',
-            justifyContent: collapsed ? 'center' : 'space-between',
+            justifyContent: effectiveCollapsed ? 'center' : 'space-between',
             gap: 1,
           }}
         >
@@ -156,22 +177,24 @@ const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
                 backgroundImage: 'linear-gradient(135deg, #5EEAD4, #3B82F6)',
               }}
             />
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <Typography variant="subtitle2" sx={{ color: 'rgba(248,250,252,0.6)', letterSpacing: '0.3em' }}>
                 BPS
               </Typography>
             )}
           </Box>
-          <Tooltip title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} placement="right">
-            <IconButton
-              size="small"
-              onClick={onToggleCollapse}
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              sx={{ color: 'rgba(248,250,252,0.7)' }}
-            >
-              {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+          {variant !== 'temporary' && (
+            <Tooltip title={effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} placement="right">
+              <IconButton
+                size="small"
+                onClick={onToggleCollapse}
+                aria-label={effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                sx={{ color: 'rgba(248,250,252,0.7)' }}
+              >
+                {effectiveCollapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
         <Divider sx={{ borderColor: 'rgba(148, 163, 184, 0.12)', width: '100%', mx: 'auto' }} />
         <List sx={{ mt: 2, width: '100%' }}>
@@ -191,11 +214,11 @@ const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
                     mb: 1,
                     borderRadius: 2.5,
                     color: isActive ? '#5EEAD4' : 'rgba(248,250,252,0.85)',
-                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
                     minHeight: 54,
-                    gap: collapsed ? 0 : 1.5,
-                    pl: collapsed ? 0 : 1,
-                    pr: collapsed ? 0 : 1.5,
+                    gap: effectiveCollapsed ? 0 : 1.5,
+                    pl: effectiveCollapsed ? 0 : 1,
+                    pr: effectiveCollapsed ? 0 : 1.5,
                     position: 'relative',
                     '&.Mui-selected': {
                       backgroundColor: 'rgba(94, 234, 212, 0.08)',
@@ -205,7 +228,7 @@ const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
                     },
                   }}
                 >
-                  {!collapsed && (
+                  {!effectiveCollapsed && (
                     <Box
                       sx={{
                         position: 'absolute',
@@ -220,14 +243,14 @@ const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
                   )}
                   <ListItemIcon
                     sx={{
-                      minWidth: collapsed ? 0 : 36,
+                      minWidth: effectiveCollapsed ? 0 : 36,
                       color: 'inherit',
                       justifyContent: 'center',
                     }}
                   >
                     {item.icon}
                   </ListItemIcon>
-                  {!collapsed && (
+                  {!effectiveCollapsed && (
                     <ListItemText
                       primary={item.label}
                       sx={{
@@ -242,7 +265,7 @@ const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
                 </ListItemButton>
               );
 
-              if (collapsed) {
+              if (effectiveCollapsed) {
                 return (
                   <Tooltip key={item.label} title={item.label} placement="right">
                     {button}

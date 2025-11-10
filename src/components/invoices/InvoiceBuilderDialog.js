@@ -17,12 +17,14 @@ import {
   Switch,
   TextField,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
 import Alert from '@mui/material/Alert';
 import Autocomplete from '@mui/material/Autocomplete';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import apiClient from '../../utils/apiClient';
+import { useTheme } from '@mui/material/styles';
 
 const defaultLineItem = () => ({
   description: '',
@@ -98,6 +100,8 @@ const InvoiceBuilderDialog = ({
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('md'));
   const initialAppointmentIdStrings = useMemo(
     () => initialAppointmentIds.map((id) => String(id)),
     [initialAppointmentIds],
@@ -437,7 +441,7 @@ const InvoiceBuilderDialog = ({
   };
 
   return (
-    <Dialog open={open} onClose={submitting ? undefined : onClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={submitting ? undefined : onClose} maxWidth="lg" fullWidth fullScreen={fullScreen}>
       <DialogTitle>{title}</DialogTitle>
       <DialogContent dividers>
         <Grid container spacing={2}>

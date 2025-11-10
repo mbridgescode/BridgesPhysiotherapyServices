@@ -28,8 +28,10 @@ import {
   MenuItem,
   Alert,
   Snackbar,
+  useMediaQuery,
 } from '@mui/material';
 import { makeStyles } from '@mui/styles';
+import { useTheme } from '@mui/material/styles';
 import apiClient from '../../utils/apiClient';
 import { AppointmentsContext } from '../../context/AppointmentsContext';
 import Autocomplete from '@mui/material/Autocomplete';
@@ -103,6 +105,8 @@ const formatStatusLabel = (status) => {
 
 const Appointments = ({ userData }) => {
   const classes = useStyles();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [searchTerm, setSearchTerm] = useState('');
   const { appointments, loading, error, setAppointments, refreshAppointments } = useContext(AppointmentsContext);
   const [patients, setPatients] = useState([]);
@@ -523,13 +527,22 @@ const Appointments = ({ userData }) => {
       filterable: false,
       minWidth: 120,
       render: (row) => (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: isMobile ? 'stretch' : 'flex-end',
+            alignItems: 'stretch',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: 1,
+          }}
+        >
           {canUpdateOutcome && (
             <Button
               size="small"
               variant="outlined"
               onClick={() => openCompletionDialog(row)}
               sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
+              fullWidth={isMobile}
             >
               Update outcome
             </Button>
@@ -541,6 +554,7 @@ const Appointments = ({ userData }) => {
               onClick={() => handleCancelAppointment(row.appointment_id)}
               disabled={row.status === 'cancelled'}
               sx={{ color: '#fff', whiteSpace: 'nowrap' }}
+              fullWidth={isMobile}
             >
               Cancel
             </Button>
@@ -830,9 +844,21 @@ const Appointments = ({ userData }) => {
     >
       <CardContent
         className={classes.cardContent}
-        sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: isMobile ? 2 : 3,
+          p: { xs: 2, md: 3 },
+        }}
       >
-        <Box display="flex" justifyContent="space-between" alignItems="center">
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems={isMobile ? 'stretch' : 'center'}
+          flexDirection={isMobile ? 'column' : 'row'}
+          gap={2}
+        >
           <Typography variant="h5" gutterBottom>
             Appointments
           </Typography>
@@ -844,6 +870,7 @@ const Appointments = ({ userData }) => {
                 setSubmitError(null);
                 setCreateOpen(true);
               }}
+              fullWidth={isMobile}
             >
               Schedule Appointment
             </Button>
@@ -863,8 +890,9 @@ const Appointments = ({ userData }) => {
             columns={appointmentColumns}
             rows={filteredAppointments}
             getRowId={(row) => row.appointment_id}
-            maxHeight="100%"
-            containerSx={{ height: '100%' }}
+            maxHeight={isMobile ? undefined : '100%'}
+            dense={isMobile}
+            containerSx={{ height: isMobile ? 'auto' : '100%' }}
             emptyMessage="No appointments match your filters."
             defaultOrderBy="date"
             defaultOrder="desc"
@@ -872,7 +900,7 @@ const Appointments = ({ userData }) => {
         </Box>
       </CardContent>
 
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Schedule Appointment</DialogTitle>
         <DialogContent dividers>
           {(therapistsError || submitError) && (
@@ -1193,7 +1221,7 @@ const Appointments = ({ userData }) => {
           </Button>
         </DialogActions>
       </Dialog>
-      <Dialog open={completionDialog.open} onClose={closeCompletionDialog} maxWidth="sm" fullWidth>
+      <Dialog open={completionDialog.open} onClose={closeCompletionDialog} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Update appointment outcome</DialogTitle>
         <DialogContent dividers>
           <RadioGroup
