@@ -633,13 +633,25 @@ const Patients = ({ userData }) => {
   };
 
   return (
-    <Card className={classes.card}>
-      <CardContent className={classes.cardContent}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography variant="h5" gutterBottom>
-            Patients
-          </Typography>
-          {canManagePatients && (
+    <Box
+      sx={{
+        flex: 1,
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 'calc(100vh - 160px)',
+      }}
+    >
+      <Card className={classes.card} sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <CardContent
+          className={classes.cardContent}
+          sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+        >
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h5" gutterBottom>
+              Patients
+            </Typography>
+            {canManagePatients && (
             <Button
               variant="contained"
               onClick={handleStartCreate}
@@ -666,13 +678,16 @@ const Patients = ({ userData }) => {
             ),
           }}
         />
-        <DataTable
-          columns={patientColumns}
-          rows={filteredPatients}
-          getRowId={(row) => row.patient_id}
-          maxHeight={520}
-          emptyMessage="No patients match your filters."
-        />
+        <Box sx={{ flex: 1, minHeight: 0 }}>
+          <DataTable
+            columns={patientColumns}
+            rows={filteredPatients}
+            getRowId={(row) => row.patient_id}
+            maxHeight="100%"
+            containerSx={{ height: '100%' }}
+            emptyMessage="No patients match your filters."
+          />
+        </Box>
       </CardContent>
 
       <Dialog open={formOpen} onClose={handleCloseForm} maxWidth="sm" fullWidth>
@@ -990,7 +1005,8 @@ const Patients = ({ userData }) => {
           {submitSuccess}
         </Alert>
       </Snackbar>
-    </Card>
+      </Card>
+    </Box>
   );
 };
 

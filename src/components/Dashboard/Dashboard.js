@@ -26,13 +26,16 @@ const Main = styled('main', {
   shouldForwardProp: (prop) => prop !== 'drawerWidth',
 })(({ theme, drawerWidth }) => ({
   flexGrow: 1,
-  padding: theme.spacing(4, 4),
+  padding: theme.spacing(3),
   marginLeft: `${drawerWidth}px`,
   minHeight: '100vh',
   background: 'transparent',
   display: 'flex',
   justifyContent: 'flex-start',
   alignItems: 'stretch',
+  width: `calc(100% - ${drawerWidth}px)`,
+  boxSizing: 'border-box',
+  overflow: 'hidden',
   transition: 'margin-left 0.2s ease',
 }));
 
@@ -82,10 +85,13 @@ const Dashboard = () => {
           sx={{
             width: '100%',
             maxWidth: '100%',
-            px: { xs: 0, md: 2 },
+            px: 0,
             display: 'flex',
             flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
             gap: 4,
+            overflow: 'hidden',
           }}
         >
           <Routes>
