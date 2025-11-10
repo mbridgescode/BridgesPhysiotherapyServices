@@ -25,6 +25,7 @@ import {
   Security as AuditIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
+  TrendingDown as ProfitLossIcon,
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { styled } from '@mui/material/styles';
@@ -97,6 +98,12 @@ const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
       icon: <BarChartIcon />,
       path: '/dashboard/reports',
       roles: ['admin', 'therapist'],
+    },
+    {
+      label: 'Profit & Loss',
+      icon: <ProfitLossIcon />,
+      path: '/dashboard/profit-loss',
+      roles: ['admin', 'receptionist'],
     },
     {
       label: 'Admin',

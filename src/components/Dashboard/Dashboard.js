@@ -12,6 +12,7 @@ import Sidebar, { SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from '../Sidebar';
 import Home from './Home';
 import Settings from './Settings';
 import Reports from './Reports';
+import ProfitLoss from './ProfitLoss';
 import Appointments from './Appointments';
 import Patients from './Patients';
 import PatientDetails from './PatientDetails';
@@ -101,6 +102,7 @@ const Dashboard = () => {
             <Route path="patients/:id" element={<PatientDetails />} />
             <Route path="invoices" element={<Invoices />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="profit-loss" element={<ProfitLoss />} />
             <Route path="settings" element={<Settings />} />
             <Route path="audit" element={<AuditLog />} />
             <Route path="admin" element={<Admin />} />
