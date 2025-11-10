@@ -13,6 +13,8 @@ import {
   DialogTitle,
   Grid,
   IconButton,
+  FormControlLabel,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -83,6 +85,7 @@ const InvoiceBuilderDialog = ({
   initialAppointmentIds = [],
   lockPatient = false,
   title = 'Create Invoice',
+  defaultSendEmail = false,
 }) => {
   const [patients, setPatients] = useState([]);
   const [loadingPatients, setLoadingPatients] = useState(false);
@@ -90,7 +93,7 @@ const InvoiceBuilderDialog = ({
     patientId: '',
     appointmentIds: [],
     dueDate: '',
-    sendEmail: false,
+    sendEmail: defaultSendEmail,
     lineItems: [defaultLineItem()],
   });
   const [submitting, setSubmitting] = useState(false);
@@ -105,10 +108,10 @@ const InvoiceBuilderDialog = ({
       patientId: initialPatientId ? String(initialPatientId) : '',
       appointmentIds: initialAppointmentIds.map((id) => String(id)),
       dueDate: '',
-      sendEmail: false,
+      sendEmail: defaultSendEmail,
       lineItems: [defaultLineItem()],
     }),
-    [initialPatientId, initialAppointmentIds],
+    [initialAppointmentIdStrings, initialPatientId, defaultSendEmail],
   );
 
   useEffect(() => {
@@ -452,7 +455,7 @@ const InvoiceBuilderDialog = ({
                   patientId: nextPatientId,
                   appointmentIds: [],
                   dueDate: '',
-                  sendEmail: false,
+                  sendEmail: defaultSendEmail,
                   lineItems: [defaultLineItem()],
                 });
                 setError('');
@@ -528,6 +531,17 @@ const InvoiceBuilderDialog = ({
               InputLabelProps={{ shrink: true }}
               value={formState.dueDate}
               onChange={(event) => setFormState((prev) => ({ ...prev, dueDate: event.target.value }))}
+            />
+          </Grid>
+          <Grid item xs={12} md={6} display="flex" alignItems="center">
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={formState.sendEmail}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, sendEmail: event.target.checked }))}
+                />
+              )}
+              label="Email invoice to billing contact"
             />
           </Grid>
         </Grid>

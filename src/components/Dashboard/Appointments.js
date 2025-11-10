@@ -1242,6 +1242,7 @@ const Appointments = ({ userData }) => {
         }
         lockPatient
         title="Adjust Invoice"
+        defaultSendEmail
       />
       <Snackbar
         open={Boolean(submitSuccess)}
