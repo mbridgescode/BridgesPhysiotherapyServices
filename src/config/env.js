@@ -38,13 +38,24 @@ const defaultCorsOrigins = [
   'https://127.0.0.1:3001',
 ];
 
-const corsOrigins = (() => {
+const resolveCorsOrigins = () => {
   const parsed = parseOrigins(process.env.CORS_ORIGIN);
-  if (parsed.length > 0) {
-    return parsed;
+  const vercelDerivedOrigin = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : null;
+
+  if (vercelDerivedOrigin) {
+    parsed.push(vercelDerivedOrigin);
   }
+
+  if (parsed.length > 0) {
+    return Array.from(new Set(parsed));
+  }
+
   return defaultCorsOrigins;
-})();
+};
+
+const corsOrigins = resolveCorsOrigins();
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
