@@ -13,7 +13,7 @@ const { recordAuditEvent } = require('../utils/audit');
 const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
 const { buildBookingConfirmationEmail } = require('../templates/email/bookingConfirmationEmail');
-const { buildInvoiceDeliveryEmail } = require('../templates/email/invoiceDeliveryEmail');
+const { buildInvoiceDeliveryEmail, buildCancellationFeeInvoiceEmail } = require('../templates/email/invoiceDeliveryEmail');
 const { generateInvoicePdf } = require('../services/pdfService');
 const { calculateTotals } = require('../utils/invoices');
 const { toPlainObject } = require('../utils/mongoose');
@@ -223,10 +223,14 @@ const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }
   invoice.pdf_generated_at = new Date();
   invoice.html_snapshot = html;
 
-  const emailContent = buildInvoiceDeliveryEmail({
+  const emailBuilder = outcome === 'cancelled_same_day'
+    ? buildCancellationFeeInvoiceEmail
+    : buildInvoiceDeliveryEmail;
+  const emailContent = emailBuilder({
     invoice: invoiceForEmail,
     billingContact,
     clinicSettings: settings,
+    appointment,
   });
   try {
     const emailResult = await sendTransactionalEmail({

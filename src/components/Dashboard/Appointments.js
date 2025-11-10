@@ -124,6 +124,7 @@ const Appointments = ({ userData }) => {
     therapistId: userData?.id || '',
     sendConfirmationEmail: true,
   });
+  const [therapistManuallySelected, setTherapistManuallySelected] = useState(false);
   const [completionDialog, setCompletionDialog] = useState({
     open: false,
     appointment: null,
@@ -288,12 +289,20 @@ const Appointments = ({ userData }) => {
     }
   };
 
-  const filteredAppointments = appointments.filter(
-    (appointment) =>
-      appointment.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appointment.surname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (appointment.treatment_description && appointment.treatment_description.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredAppointments = useMemo(() => {
+    if (!Array.isArray(appointments)) {
+      return [];
+    }
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return appointments;
+    }
+    return appointments.filter((appointment) => {
+      const name = `${appointment.first_name || ''} ${appointment.surname || ''}`.toLowerCase().trim();
+      const treatment = (appointment.treatment_description || '').toLowerCase();
+      return name.includes(normalizedSearch) || treatment.includes(normalizedSearch);
+    });
+  }, [appointments, searchTerm]);
 
   const appointmentStatusOptions = useMemo(
     () =>
@@ -322,6 +331,29 @@ const Appointments = ({ userData }) => {
         value: status,
         label: status.charAt(0).toUpperCase() + status.slice(1),
       })),
+    [appointments],
+  );
+
+  const outcomeFilterOptions = useMemo(
+    () => {
+      const values = Array.from(
+        new Set(
+          (appointments || [])
+            .map((appointment) => appointment.completion_status || appointment.status)
+            .filter(Boolean),
+        ),
+      );
+      if (!values.length) {
+        return COMPLETION_OUTCOME_OPTIONS.map((option) => ({
+          value: option.value,
+          label: option.label,
+        }));
+      }
+      return values.map((value) => ({
+        value,
+        label: formatStatusLabel(value),
+      }));
+    },
     [appointments],
   );
 
@@ -403,21 +435,26 @@ const Appointments = ({ userData }) => {
     {
       id: 'completion_status',
       label: 'Outcome',
+      type: 'select',
+      options: outcomeFilterOptions,
       sortable: false,
-      filterable: false,
-      minWidth: 180,
-      render: (row) => (
-        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-          <Typography variant="body2" fontWeight={600}>
-            {formatStatusLabel(row.status || row.completion_status)}
-          </Typography>
-          {row.completion_note && (
-            <Typography variant="caption" color="text.secondary">
-              {row.completion_note}
+      minWidth: 200,
+      valueGetter: (row) => row.completion_status || row.status || '',
+      render: (row) => {
+        const outcomeValue = row.completion_status || row.status;
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="body2" fontWeight={600}>
+              {formatStatusLabel(outcomeValue)}
             </Typography>
-          )}
-        </Box>
-      ),
+            {row.completion_note && (
+              <Typography variant="caption" color="text.secondary">
+                {row.completion_note}
+              </Typography>
+            )}
+          </Box>
+        );
+      },
     },
   ];
 
@@ -439,6 +476,7 @@ const Appointments = ({ userData }) => {
               size="small"
               variant="outlined"
               onClick={() => openCompletionDialog(row)}
+              sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
             >
               Update outcome
             </Button>
@@ -449,7 +487,7 @@ const Appointments = ({ userData }) => {
               color="warning"
               onClick={() => handleCancelAppointment(row.appointment_id)}
               disabled={row.status === 'cancelled'}
-              sx={{ color: '#fff' }}
+              sx={{ color: '#fff', whiteSpace: 'nowrap' }}
             >
               Cancel
             </Button>
@@ -472,6 +510,71 @@ const Appointments = ({ userData }) => {
       setPatientInputValue(buildPatientLabel(selectedPatient));
     }
   }, [selectedPatient]);
+
+  const findPreferredTherapistForPatient = useCallback((patient) => {
+    if (!patient || !therapistOptions.length) {
+      return null;
+    }
+
+    const candidateIds = [];
+    const primaryTherapist = patient.primaryTherapist;
+    if (primaryTherapist) {
+      if (typeof primaryTherapist === 'object') {
+        candidateIds.push(primaryTherapist.id, primaryTherapist._id, primaryTherapist.userId);
+        if (primaryTherapist.employeeID !== undefined && primaryTherapist.employeeID !== null) {
+          const numericEmployee = Number(primaryTherapist.employeeID);
+          if (!Number.isNaN(numericEmployee)) {
+            const match = therapistOptions.find((therapist) => Number(therapist.employeeID) === numericEmployee);
+            if (match) {
+              return match;
+            }
+          }
+        }
+      } else {
+        candidateIds.push(primaryTherapist);
+      }
+    }
+
+    const normalizedIds = candidateIds.filter(Boolean).map(String);
+    if (normalizedIds.length) {
+      const matchById = therapistOptions.find((therapist) => normalizedIds.includes(String(therapist.id)));
+      if (matchById) {
+        return matchById;
+      }
+    }
+
+    const numericPrimaryId = Number(patient.primary_therapist_id);
+    if (!Number.isNaN(numericPrimaryId)) {
+      const matchByEmployeeId = therapistOptions.find(
+        (therapist) => Number(therapist.employeeID) === numericPrimaryId,
+      );
+      if (matchByEmployeeId) {
+        return matchByEmployeeId;
+      }
+    }
+
+    return null;
+  }, [therapistOptions]);
+
+  useEffect(() => {
+    if (!selectedPatient || therapistManuallySelected) {
+      return;
+    }
+    const preferred = findPreferredTherapistForPatient(selectedPatient);
+    if (preferred) {
+      setFormState((prev) => {
+        if (prev.therapistId === preferred.id) {
+          return prev;
+        }
+        return {
+          ...prev,
+          therapistId: preferred.id,
+          therapistName: preferred.name || '',
+          employeeID: preferred.employeeID ?? '',
+        };
+      });
+    }
+  }, [selectedPatient, therapistManuallySelected, findPreferredTherapistForPatient]);
 
   const therapistSelection = useMemo(() => {
     if (!formState.therapistId) {
@@ -643,6 +746,7 @@ const Appointments = ({ userData }) => {
       }));
       setPatientInputValue('');
       setSelectedTreatment(null);
+      setTherapistManuallySelected(false);
       refreshAppointments();
     } catch (err) {
       const message = err?.response?.data?.message || 'Failed to create appointment';
@@ -709,6 +813,8 @@ const Appointments = ({ userData }) => {
             maxHeight="100%"
             containerSx={{ height: '100%' }}
             emptyMessage="No appointments match your filters."
+            defaultOrderBy="date"
+            defaultOrder="desc"
           />
         </Box>
       </CardContent>
@@ -743,8 +849,18 @@ const Appointments = ({ userData }) => {
                   }
                 }}
                 onChange={(event, newValue) => {
-                  setFormState((prev) => ({ ...prev, patient_id: newValue?.patient_id ?? '' }));
+                  setFormState((prev) => {
+                    const preferred = findPreferredTherapistForPatient(newValue);
+                    return {
+                      ...prev,
+                      patient_id: newValue?.patient_id ?? '',
+                      therapistId: preferred?.id ?? prev.therapistId,
+                      therapistName: preferred?.name ?? prev.therapistName,
+                      employeeID: preferred?.employeeID ?? prev.employeeID,
+                    };
+                  });
                   setFormErrors((prev) => ({ ...prev, patient_id: undefined }));
+                  setTherapistManuallySelected(false);
                   if (newValue) {
                     setPatientInputValue(buildPatientLabel(newValue));
                   }
@@ -792,6 +908,7 @@ const Appointments = ({ userData }) => {
                     therapistName: newValue?.name || '',
                   }));
                   setFormErrors((prev) => ({ ...prev, therapistId: undefined }));
+                  setTherapistManuallySelected(Boolean(newValue));
                 }}
                 loading={therapistsLoading}
                 disabled={!therapistOptions.length}

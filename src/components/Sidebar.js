@@ -106,7 +106,7 @@ const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
       roles: ['admin', 'receptionist', 'therapist'],
     },
     {
-      label: 'Admin',
+      label: 'Users',
       icon: <AdminIcon />,
       path: '/dashboard/admin',
       roles: ['admin'],

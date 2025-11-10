@@ -257,13 +257,22 @@ const DataTable = ({
   containerSx,
   tableSx,
   stickyHeader = true,
+  defaultOrderBy,
+  defaultOrder = 'asc',
 }) => {
   const sortableFallback = useMemo(
     () => columns.find((column) => column.sortable !== false)?.id ?? columns[0]?.id ?? '',
     [columns],
   );
-  const [orderBy, setOrderBy] = useState(sortableFallback);
-  const [order, setOrder] = useState('asc');
+  const resolvedInitialOrderBy = useMemo(() => {
+    if (defaultOrderBy && columns.some((column) => column.id === defaultOrderBy && column.sortable !== false)) {
+      return defaultOrderBy;
+    }
+    return sortableFallback;
+  }, [columns, defaultOrderBy, sortableFallback]);
+
+  const [orderBy, setOrderBy] = useState(resolvedInitialOrderBy);
+  const [order, setOrder] = useState(defaultOrder === 'desc' ? 'desc' : 'asc');
   const [filters, setFilters] = useState({});
 
   useEffect(() => {
@@ -271,9 +280,13 @@ const DataTable = ({
       if (prev && columns.some((column) => column.id === prev && column.sortable !== false)) {
         return prev;
       }
-      return sortableFallback;
+      return resolvedInitialOrderBy;
     });
-  }, [columns, sortableFallback]);
+  }, [columns, resolvedInitialOrderBy]);
+
+  useEffect(() => {
+    setOrder(defaultOrder === 'desc' ? 'desc' : 'asc');
+  }, [defaultOrder]);
 
   useEffect(() => {
     setFilters((prev) => {

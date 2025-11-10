@@ -119,6 +119,8 @@ const AuditLog = () => {
           getRowId={(row) => row._id}
           maxHeight={520}
           emptyMessage="No audit activity recorded."
+          defaultOrderBy="createdAt"
+          defaultOrder="desc"
         />
       </CardContent>
     </Card>
