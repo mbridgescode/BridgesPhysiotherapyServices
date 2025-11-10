@@ -32,3 +32,7 @@ storage/**
 !storage/invoices/.gitkeep
 !storage/tmp/
 !storage/tmp/.gitkeep
+
+# Local playground helpers
+mongodb_playground.js
+mongodb_playground.py
