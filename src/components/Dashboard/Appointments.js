@@ -13,6 +13,7 @@ import {
   CardContent,
   Typography,
   Checkbox,
+  FormControlLabel,
   TextField,
   Divider,
   CircularProgress,
@@ -95,6 +96,7 @@ const Appointments = ({ userData }) => {
     employeeID: userData?.employeeID || '',
     therapistName: '',
     therapistId: userData?.id || '',
+    sendConfirmationEmail: true,
   });
 
   useEffect(() => {
@@ -524,6 +526,7 @@ const Appointments = ({ userData }) => {
         treatment_id: Number.isNaN(treatmentIdValue) ? Date.now() : treatmentIdValue,
         price: priceValue,
         treatment_count: treatmentCountValue,
+        sendConfirmationEmail: formState.sendConfirmationEmail !== false,
       };
 
       await apiClient.post('/api/appointments', payload);
@@ -542,6 +545,7 @@ const Appointments = ({ userData }) => {
         employeeID: prev.employeeID,
         therapistName: prev.therapistName,
         therapistId: prev.therapistId,
+        sendConfirmationEmail: true,
       }));
       setPatientInputValue('');
       setSelectedTreatment(null);
@@ -898,6 +902,20 @@ const Appointments = ({ userData }) => {
                 }}
                 error={Boolean(formErrors.price)}
                 helperText={formErrors.price}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={(
+                  <Checkbox
+                    checked={formState.sendConfirmationEmail}
+                    onChange={(event) => setFormState((prev) => ({
+                      ...prev,
+                      sendConfirmationEmail: event.target.checked,
+                    }))}
+                  />
+                )}
+                label="Send confirmation email"
               />
             </Grid>
           </Grid>

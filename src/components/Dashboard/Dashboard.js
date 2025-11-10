@@ -8,7 +8,7 @@ import {
   Navigate,
 } from 'react-router-dom';
 import { Box, CssBaseline, CircularProgress } from '@mui/material';
-import Sidebar, { SIDEBAR_WIDTH } from '../Sidebar';
+import Sidebar, { SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from '../Sidebar';
 import Home from './Home';
 import Settings from './Settings';
 import Reports from './Reports';
@@ -22,21 +22,23 @@ import { styled } from '@mui/material/styles';
 import apiClient from '../../utils/apiClient';
 import { emitAuthTokenChanged } from '../../utils/authEvents';
 
-const drawerWidth = SIDEBAR_WIDTH;
-
-const Main = styled('main')(({ theme }) => ({
+const Main = styled('main', {
+  shouldForwardProp: (prop) => prop !== 'drawerWidth',
+})(({ theme, drawerWidth }) => ({
   flexGrow: 1,
-  padding: theme.spacing(6, 6),
+  padding: theme.spacing(4, 4),
   marginLeft: `${drawerWidth}px`,
   minHeight: '100vh',
   background: 'transparent',
   display: 'flex',
   justifyContent: 'flex-start',
   alignItems: 'stretch',
+  transition: 'margin-left 0.2s ease',
 }));
 
 const Dashboard = () => {
   const [userData, setUserData] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -60,6 +62,8 @@ const Dashboard = () => {
     return <CircularProgress />;
   }
 
+  const drawerWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
+
   return (
     <Box
       sx={{
@@ -69,8 +73,11 @@ const Dashboard = () => {
       }}
     >
       <CssBaseline />
-      <Sidebar />
-      <Main>
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+      />
+      <Main drawerWidth={drawerWidth}>
         <Box
           sx={{
             width: '100%',

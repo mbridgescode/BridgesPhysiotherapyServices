@@ -172,6 +172,23 @@ router.post(
         therapistId,
         ...body
       } = req.body;
+      const shouldSendConfirmationEmail = (() => {
+        const flag = body.sendConfirmationEmail;
+        if (flag === undefined || flag === null || flag === '') {
+          return true;
+        }
+        if (typeof flag === 'string') {
+          const normalized = flag.trim().toLowerCase();
+          if (['false', '0', 'no', 'off'].includes(normalized)) {
+            return false;
+          }
+          if (['true', '1', 'yes', 'on'].includes(normalized)) {
+            return true;
+          }
+          return normalized !== 'false';
+        }
+        return Boolean(flag);
+      })();
 
       if (patientId === undefined || patientId === null || patientId === '') {
         return res.status(400).json({ success: false, message: 'patient_id is required' });
@@ -241,6 +258,7 @@ router.post(
         treatment_count: treatmentCountValue,
         treatment_id: treatmentIdValue ?? Date.now(),
       };
+      delete sanitizedBody.sendConfirmationEmail;
 
       const seriesId = recurrence ? crypto.randomUUID() : undefined;
 
@@ -316,7 +334,7 @@ router.post(
       });
 
       let bookingEmailResult = null;
-      if (patient.email) {
+      if (shouldSendConfirmationEmail && patient.email) {
         try {
           const clinicSettings = await getLatestClinicSettings();
           const appointmentsForEmail = createdAppointments.map((doc) => {

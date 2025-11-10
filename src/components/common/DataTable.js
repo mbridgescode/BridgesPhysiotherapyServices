@@ -87,6 +87,16 @@ const stableSort = (array, comparator) => {
   return stabilized.map((el) => el[0]);
 };
 
+const responsiveMinWidth = (value) => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === 'number') {
+    return { xs: 0, lg: value };
+  }
+  return { xs: 0, lg: value };
+};
+
 const booleanOptions = [
   { label: 'All', value: '' },
   { label: 'Yes', value: 'true' },
@@ -358,14 +368,17 @@ const DataTable = ({
   })();
 
   return (
-    <Box sx={{ position: 'relative' }}>
+    <Box sx={{ position: 'relative', width: '100%' }}>
       <TableContainer
         component={containerComponent}
         sx={{
           width: '100%',
+          maxWidth: '100%',
+          flex: 1,
           maxHeight: resolvedMaxHeight,
           minHeight: resolvedMinHeight,
-          overflow: 'auto',
+          overflowX: 'auto',
+          overflowY: 'auto',
           borderRadius: 2,
           border: '1px solid rgba(148, 163, 184, 0.12)',
           backgroundColor: 'rgba(15,17,30,0.65)',
@@ -375,7 +388,11 @@ const DataTable = ({
         <Table
           stickyHeader={stickyHeader}
           size={dense ? 'small' : 'medium'}
-          sx={{ minWidth: 650, ...tableSx }}
+          sx={{
+            width: '100%',
+            tableLayout: 'auto',
+            ...tableSx,
+          }}
         >
           <TableHead>
             <TableRow>
@@ -389,8 +406,10 @@ const DataTable = ({
                     textTransform: 'uppercase',
                     fontSize: '0.75rem',
                     color: 'text.secondary',
-                    minWidth: column.minWidth,
+                    minWidth: responsiveMinWidth(column.minWidth),
                     width: column.width,
+                    whiteSpace: column.wrap === false ? 'nowrap' : 'normal',
+                    wordBreak: column.wrap === false ? 'normal' : 'break-word',
                     ...column.headerSx,
                   }}
                 >
@@ -410,7 +429,15 @@ const DataTable = ({
             </TableRow>
             <TableRow>
               {columns.map((column) => (
-                <TableCell key={`${column.id}-filter`} align={column.align} sx={{ backgroundColor: 'rgba(11,15,25,0.8)' }}>
+                <TableCell
+                  key={`${column.id}-filter`}
+                  align={column.align}
+                  sx={{
+                    backgroundColor: 'rgba(11,15,25,0.8)',
+                    minWidth: responsiveMinWidth(column.minWidth),
+                    width: column.width,
+                  }}
+                >
                   {renderFilterControl(column, filters[column.id] ?? '', (value) => handleFilterChange(column.id, value))}
                 </TableCell>
               ))}
@@ -436,7 +463,14 @@ const DataTable = ({
                         <TableCell
                           key={`${rowId}-${column.id}`}
                           align={column.align}
-                          sx={{ verticalAlign: 'top', ...column.cellSx }}
+                          sx={{
+                            verticalAlign: 'top',
+                            minWidth: responsiveMinWidth(column.minWidth),
+                            width: column.width,
+                            whiteSpace: column.wrap === false ? 'nowrap' : 'normal',
+                            wordBreak: column.wrap === false ? 'normal' : 'break-word',
+                            ...column.cellSx,
+                          }}
                         >
                           {column.render ? column.render(row, { value, column }) : formatCellValue(value, column)}
                         </TableCell>
