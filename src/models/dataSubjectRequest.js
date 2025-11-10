@@ -31,7 +31,7 @@ const dataSubjectRequestSchema = new mongoose.Schema({
     index: true,
   },
   requesterName: encryptedStringField({ required: true, trim: true }),
-  requesterEmail: encryptedStringField({ trim: true, lowercase: true, normalize: (value) => value.toLowerCase() }),
+  requesterEmail: encryptedStringField({ trim: true, normalize: (value) => value.toLowerCase() }),
   receivedAt: { type: Date, default: Date.now },
   dueAt: { type: Date, required: true },
   completedAt: { type: Date },

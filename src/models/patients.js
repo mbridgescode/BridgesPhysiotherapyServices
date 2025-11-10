@@ -21,7 +21,6 @@ const emergencyContactSchema = new mongoose.Schema({
   phone: encryptedStringField({ trim: true }),
   email: encryptedStringField({
     trim: true,
-    lowercase: true,
     normalize: (value) => value.toLowerCase(),
   }),
 }, { _id: false });
@@ -60,7 +59,6 @@ const PatientSchema = new mongoose.Schema({
   email: encryptedStringField({
     required: true,
     trim: true,
-    lowercase: true,
     normalize: (value) => value.toLowerCase(),
   }),
   phone: encryptedStringField({
@@ -72,7 +70,6 @@ const PatientSchema = new mongoose.Schema({
   }),
   primary_contact_email: encryptedStringField({
     trim: true,
-    lowercase: true,
     normalize: (value) => value.toLowerCase(),
   }),
   primary_contact_phone: encryptedStringField({

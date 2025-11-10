@@ -70,7 +70,6 @@ const InvoiceSchema = new mongoose.Schema({
   billing_contact_name: encryptedStringField({ trim: true }),
   billing_contact_email: encryptedStringField({
     trim: true,
-    lowercase: true,
     normalize: (value) => value.toLowerCase(),
   }),
   billing_contact_phone: encryptedStringField({ trim: true }),

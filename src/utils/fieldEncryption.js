@@ -4,6 +4,30 @@ const {
   toISODateString,
 } = require('./encryption');
 
+const buildNormalizer = ({ normalize, lowercase, uppercase }) => {
+  if (typeof normalize === 'function') {
+    return normalize;
+  }
+
+  if (lowercase) {
+    return (value) => (
+      typeof value === 'string'
+        ? value.toLowerCase()
+        : value
+    );
+  }
+
+  if (uppercase) {
+    return (value) => (
+      typeof value === 'string'
+        ? value.toUpperCase()
+        : value
+    );
+  }
+
+  return null;
+};
+
 const returnIfFalsy = (value) => {
   if (value === undefined || value === null) {
     return value;
@@ -19,7 +43,13 @@ const passthroughIfEncrypted = (value) => {
 };
 
 const encryptedStringField = (options = {}) => {
-  const { normalize, ...schemaOptions } = options;
+  const {
+    normalize,
+    lowercase,
+    uppercase,
+    ...schemaOptions
+  } = options;
+  const normalizeFn = buildNormalizer({ normalize, lowercase, uppercase });
   return {
     ...schemaOptions,
     type: String,
@@ -33,7 +63,7 @@ const encryptedStringField = (options = {}) => {
         return encrypted;
       }
 
-      const normalizedValue = normalize ? normalize(value) : value;
+      const normalizedValue = normalizeFn ? normalizeFn(value) : value;
       return encryptValue(normalizedValue);
     },
     get(value) {
@@ -79,7 +109,13 @@ const encryptedDateField = (options = {}) => {
 };
 
 const encryptedStringArrayField = (options = {}) => {
-  const { normalize, ...schemaOptions } = options;
+  const {
+    normalize,
+    lowercase,
+    uppercase,
+    ...schemaOptions
+  } = options;
+  const normalizeFn = buildNormalizer({ normalize, lowercase, uppercase });
   return {
     ...schemaOptions,
     type: [String],
@@ -96,7 +132,7 @@ const encryptedStringArrayField = (options = {}) => {
         if (encrypted) {
           return encrypted;
         }
-        const normalized = normalize ? normalize(item) : item;
+        const normalized = normalizeFn ? normalizeFn(item) : item;
         return encryptValue(normalized);
       });
     },
