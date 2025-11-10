@@ -17,11 +17,36 @@ const pickValue = (source, field) => {
     return null;
   }
 
-  if (typeof source.get === 'function') {
-    return source.get(field);
-  }
+  const resolvePlainValue = () => {
+    if (typeof source.get === 'function') {
+      return source.get(field);
+    }
+    return source[field];
+  };
 
-  return source[field];
+  try {
+    return resolvePlainValue();
+  } catch (error) {
+    const patientId = (() => {
+      try {
+        if (typeof source.get === 'function') {
+          return source.get('patient_id') ?? source.patient_id;
+        }
+        return source.patient_id;
+      } catch (idError) {
+        return source.patient_id;
+      }
+    })();
+
+    console.error(
+      `Failed to read field "${field}" while building patient search tokens`,
+      {
+        patientId,
+        error: error?.message,
+      },
+    );
+    return null;
+  }
 };
 
 const buildPatientSearchTokens = (patient) => {
