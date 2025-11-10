@@ -27,6 +27,27 @@ const parseOrigins = (value) => {
   return [value.trim()];
 };
 
+const toUrlString = (value) => {
+  if (!value) {
+    return null;
+  }
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+  return `https://${value}`;
+};
+
+const toHostname = (value) => {
+  if (!value) {
+    return null;
+  }
+  try {
+    return (new URL(toUrlString(value))).hostname;
+  } catch (error) {
+    return null;
+  }
+};
+
 const defaultCorsOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -40,13 +61,10 @@ const defaultCorsOrigins = [
 
 const resolveCorsOrigins = () => {
   const parsed = parseOrigins(process.env.CORS_ORIGIN);
-  const vercelDerivedOrigin = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : null;
-
-  if (vercelDerivedOrigin) {
-    parsed.push(vercelDerivedOrigin);
-  }
+  [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ].filter(Boolean).forEach((value) => parsed.push(toUrlString(value)));
 
   if (parsed.length > 0) {
     return Array.from(new Set(parsed));
@@ -55,7 +73,43 @@ const resolveCorsOrigins = () => {
   return defaultCorsOrigins;
 };
 
+const deriveVercelProjectSlug = (origins) => {
+  if (process.env.VERCEL_PROJECT_NAME) {
+    return process.env.VERCEL_PROJECT_NAME;
+  }
+
+  const candidates = [
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL,
+    ...origins,
+  ];
+
+  for (const candidate of candidates) {
+    const hostname = toHostname(candidate);
+    if (hostname && hostname.endsWith('.vercel.app')) {
+      const slug = hostname.slice(0, -'.vercel.app'.length);
+      if (slug) {
+        return slug;
+      }
+    }
+  }
+
+  return null;
+};
+
+const buildCorsOriginPatterns = (origins) => {
+  const patterns = [];
+  const vercelSlug = deriveVercelProjectSlug(origins);
+
+  if (vercelSlug) {
+    patterns.push(new RegExp(`^https://${vercelSlug}(?:-[^.]+)?\\.vercel\\.app$`, 'i'));
+  }
+
+  return patterns;
+};
+
 const corsOrigins = resolveCorsOrigins();
+const corsOriginPatterns = buildCorsOriginPatterns(corsOrigins);
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -63,6 +117,7 @@ module.exports = {
   port: process.env.PORT || 3000,
   corsOrigin: corsOrigins[0],
   corsOrigins,
+  corsOriginPatterns,
   mongoUri: assertEnv('MONGODB_URI', process.env.MONGODB_URI),
   accessTokenSecret: assertEnv('ACCESS_TOKEN_SECRET', process.env.ACCESS_TOKEN_SECRET),
   refreshTokenSecret: assertEnv('REFRESH_TOKEN_SECRET', process.env.REFRESH_TOKEN_SECRET),

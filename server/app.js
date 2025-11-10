@@ -19,6 +19,7 @@ const {
   host,
   corsOrigin,
   corsOrigins,
+  corsOriginPatterns,
   nodeEnv,
   enforceHttps,
 } = require('../src/config/env');
@@ -29,6 +30,7 @@ const resolvedOrigins = Array.isArray(corsOrigins) && corsOrigins.length > 0
   ? corsOrigins
   : (corsOrigin ? [corsOrigin] : []);
 const allowedOrigins = new Set(resolvedOrigins);
+const originPatterns = Array.isArray(corsOriginPatterns) ? corsOriginPatterns : [];
 
 const corsOptions = {
   origin(origin, callback) {
@@ -36,7 +38,11 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    if (allowedOrigins.size === 0 || allowedOrigins.has(origin)) {
+    if (
+      allowedOrigins.size === 0
+      || allowedOrigins.has(origin)
+      || originPatterns.some((pattern) => pattern.test(origin))
+    ) {
       return callback(null, true);
     }
 
