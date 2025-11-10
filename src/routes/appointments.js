@@ -1,16 +1,21 @@
 const express = require('express');
 const crypto = require('crypto');
+const path = require('path');
 const Appointment = require('../models/appointments');
 const Patient = require('../models/patients');
 const User = require('../models/user');
 const Counter = require('../models/counter');
 const Service = require('../models/service');
+const Invoice = require('../models/invoices');
 const { authenticate, authorize } = require('../middleware/auth');
 const { fetchPaymentStatus } = require('../utils/payments');
 const { recordAuditEvent } = require('../utils/audit');
 const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
 const { buildBookingConfirmationEmail } = require('../templates/email/bookingConfirmationEmail');
+const { buildInvoiceDeliveryEmail } = require('../templates/email/invoiceDeliveryEmail');
+const { generateInvoicePdf } = require('../services/pdfService');
+const { calculateTotals } = require('../utils/invoices');
 const { toPlainObject } = require('../utils/mongoose');
 
 const router = express.Router();
@@ -40,8 +45,8 @@ const applyFilters = (query, { employeeID, status, from, to, includeCancelled })
     query.status = status;
   }
 
-  if (!includeCancelled) {
-    query.status = query.status || { $ne: 'cancelled' };
+  if (!includeCancelled && !status) {
+    query.status = { $nin: ['cancelled'] };
   }
 
   if (from || to) {
@@ -76,8 +81,193 @@ const buildAppointmentPayload = ({ patient, data, createdBy, seriesId }) => ({
   series_id: seriesId,
   createdBy,
   updatedBy: createdBy,
+  billing_mode: patient.billing_mode || 'individual',
   status: data.completed === true ? 'completed' : data.status || 'scheduled',
+  completion_status: data.completed === true ? 'completed' : data.completion_status || 'scheduled',
 });
+
+const buildPdfUrl = (invoiceNumber) => `/api/invoices/${invoiceNumber}/pdf`;
+
+const resolveBillingContact = (patient) => {
+  const fallbackName = buildPatientDisplayName(patient);
+  const name = (patient?.primary_contact_name || '').trim();
+  const email = (patient?.primary_contact_email || '').trim();
+  const phone = (patient?.primary_contact_phone || '').trim();
+
+  return {
+    name: name || fallbackName,
+    email: email || patient?.email,
+    phone: phone || patient?.phone,
+  };
+};
+
+const nextInvoiceIdentifiers = async (settings) => {
+  const [invoiceNumberSeq, invoiceIdSeq] = await Promise.all([
+    Counter.next('invoice_number', 1),
+    Counter.next('invoice_id', 1),
+  ]);
+  const prefix = settings?.invoice_prefix || 'INV';
+  const year = new Date().getFullYear();
+  return {
+    invoiceNumber: `${prefix}-${year}-${String(invoiceNumberSeq).padStart(4, '0')}`,
+    invoiceId: invoiceIdSeq,
+  };
+};
+
+const AUTO_INVOICE_RULES = {
+  completed: {
+    multiplier: 1,
+    description: (appointment) => appointment.treatment_description || 'Treatment session',
+  },
+  cancelled_same_day: {
+    multiplier: 0.5,
+    description: (appointment) => `${appointment.treatment_description || 'Treatment session'} (same-day cancellation fee)`,
+  },
+};
+
+const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }) => {
+  if (!patient || (patient.billing_mode && patient.billing_mode === 'monthly')) {
+    return null;
+  }
+  const rule = AUTO_INVOICE_RULES[outcome];
+  if (!rule) {
+    return null;
+  }
+
+  const basePrice = Number(appointment.price) || 0;
+  const amount = Math.round(basePrice * rule.multiplier * 100) / 100;
+  if (amount <= 0) {
+    return null;
+  }
+
+  const existingInvoice = await Invoice.findOne({
+    $or: [
+      { appointment_id: appointment.appointment_id },
+      { appointment_ids: appointment.appointment_id },
+    ],
+  });
+  if (existingInvoice) {
+    return { invoice: existingInvoice, created: false };
+  }
+
+  const billingContact = resolveBillingContact(patient);
+  const settings = await getLatestClinicSettings();
+  const identifiers = await nextInvoiceIdentifiers(settings);
+
+  const lineItems = [{
+    line_id: `auto-${appointment.appointment_id}`,
+    description: rule.description(appointment),
+    quantity: 1,
+    unit_price: amount,
+    tax_rate: 0,
+    discount_amount: 0,
+    total: amount,
+    appointment_id: appointment.appointment_id,
+    service_date: appointment.date,
+  }];
+
+  const totals = calculateTotals({
+    lineItems,
+    discount: { amount: 0 },
+  });
+  const invoiceDiscount = {
+    amount: totals.discountAmount || 0,
+    invoice_amount: totals.invoiceDiscountAmount || 0,
+    line_item_amount: totals.lineDiscountTotal || 0,
+  };
+
+  const invoice = await Invoice.create({
+    invoice_id: identifiers.invoiceId,
+    invoice_number: identifiers.invoiceNumber,
+    patient_id: patient.patient_id,
+    client_id: patient.patient_id,
+    patient: patient.id,
+    billing_contact_name: billingContact.name,
+    billing_contact_email: billingContact.email,
+    billing_contact_phone: billingContact.phone,
+    appointment_id: appointment.appointment_id,
+    appointment_ids: [appointment.appointment_id],
+    line_items: lineItems,
+    totals: totals.totals,
+    discount: invoiceDiscount,
+    subtotal: totals.subtotal,
+    tax_total: totals.taxTotal,
+    total_due: totals.totalDue,
+    total_paid: 0,
+    balance_due: totals.balanceDue,
+    currency: 'GBP',
+    issue_date: new Date(),
+    status: 'sent',
+    createdBy: actorId,
+    email_log: { status: 'queued' },
+  });
+
+  const invoicePlain = invoice.toObject();
+  const invoiceForEmail = {
+    ...invoicePlain,
+    patient_name: buildPatientDisplayName(patient),
+    patient_email: patient.email,
+    patient_phone: patient.phone,
+    billing_contact_name: billingContact.name,
+    billing_contact_email: billingContact.email,
+    billing_contact_phone: billingContact.phone,
+  };
+
+  const { pdfPath, pdfBuffer, html } = await generateInvoicePdf({
+    invoice: invoiceForEmail,
+    clinicSettings: settings,
+  });
+
+  invoice.pdf_path = pdfPath ? path.relative(process.cwd(), pdfPath) : null;
+  invoice.pdf_url = buildPdfUrl(invoice.invoice_number);
+  invoice.pdf_generated_at = new Date();
+  invoice.html_snapshot = html;
+
+  const emailContent = buildInvoiceDeliveryEmail({
+    invoice: invoiceForEmail,
+    billingContact,
+    clinicSettings: settings,
+  });
+  try {
+    const emailResult = await sendTransactionalEmail({
+      to: billingContact.email,
+      subject: emailContent.subject,
+      html: emailContent.html,
+      text: emailContent.text,
+      attachments: [
+        {
+          content: pdfBuffer,
+          filename: `${invoice.invoice_number}.pdf`,
+          type: 'application/pdf',
+          disposition: 'attachment',
+        },
+      ],
+      patientId: patient.patient_id,
+      metadata: { invoice_number: invoice.invoice_number },
+    });
+
+    invoice.email_log = {
+      status: emailResult.status,
+      provider: emailResult.provider || 'unknown',
+      providerMessageId: emailResult.providerMessageId,
+      lastAttemptAt: new Date(),
+      errorMessage: emailResult.errorMessage,
+    };
+  } catch (emailError) {
+    console.error('Failed to email automatic invoice', emailError);
+    invoice.email_log = {
+      status: 'failed',
+      provider: 'unknown',
+      providerMessageId: null,
+      lastAttemptAt: new Date(),
+      errorMessage: emailError.message,
+    };
+  }
+
+  await invoice.save();
+
+  return { invoice, created: true };
+};
 
 router.get(
   '/treatments',
@@ -138,6 +328,13 @@ router.get(
       const { employeeID, status, from, to, includeCancelled } = req.query;
       const query = {};
       applyFilters(query, { employeeID, status, from, to, includeCancelled });
+      if (req.user.role !== 'admin') {
+        if (req.user.employeeID !== null && req.user.employeeID !== undefined) {
+          query.employeeID = req.user.employeeID;
+        } else {
+          query.$and = [...(query.$and || []), { therapist: req.user.id }];
+        }
+      }
 
       const appointmentDocs = await Appointment.find(query)
         .sort({ date: 1 });
@@ -431,27 +628,78 @@ router.post(
   authenticate,
   authorize('admin', 'therapist', 'receptionist'),
   async (req, res, next) => {
-    const { appointment_id: appointmentId, completed } = req.body;
+    const { appointment_id: appointmentId, outcome, note } = req.body;
 
     if (!appointmentId) {
       return res.status(400).json({ success: false, message: 'appointment_id is required' });
     }
 
-    try {
-      const appointment = await Appointment.findOneAndUpdate(
-        { appointment_id: appointmentId },
-        {
-          $set: {
-            completed: completed === true,
-            status: completed === true ? 'completed' : 'scheduled',
-            updatedBy: req.user.id,
-          },
-        },
-        { new: true },
-      );
+    const normalizedOutcome = typeof outcome === 'string' ? outcome.toLowerCase() : '';
+    const allowedOutcomes = ['completed', 'cancelled_on_the_day', 'cancelled_same_day', 'other'];
+    if (!allowedOutcomes.includes(normalizedOutcome)) {
+      return res.status(400).json({ success: false, message: 'Invalid outcome selected' });
+    }
 
+    const effectiveOutcome = normalizedOutcome === 'cancelled_on_the_day' ? 'cancelled_same_day' : normalizedOutcome;
+
+    if (effectiveOutcome === 'other' && (!note || !note.trim())) {
+      return res.status(400).json({ success: false, message: 'Provide a note for "Other" outcomes' });
+    }
+
+    try {
+      const appointment = await Appointment.findOne({ appointment_id: appointmentId });
       if (!appointment) {
         return res.status(404).json({ success: false, message: 'Appointment not found' });
+      }
+
+      const update = {
+        completion_status: effectiveOutcome,
+        completion_note: effectiveOutcome === 'other' ? note?.trim() : '',
+        updatedBy: req.user.id,
+      };
+
+      if (effectiveOutcome === 'completed') {
+        update.completed = true;
+        update.status = 'completed';
+      } else if (effectiveOutcome === 'cancelled_same_day') {
+        update.completed = false;
+        update.status = 'cancelled_same_day';
+        update.cancelled_at = new Date();
+      } else {
+        update.completed = false;
+        update.status = 'other';
+      }
+
+      appointment.set(update);
+      await appointment.save();
+
+      const patient = await Patient.findOne({ patient_id: appointment.patient_id });
+
+      let autoInvoiceResult = null;
+      if (
+        patient
+        && patient.billing_mode !== 'monthly'
+        && (effectiveOutcome === 'completed' || effectiveOutcome === 'cancelled_same_day')
+      ) {
+        try {
+          autoInvoiceResult = await createAutomaticInvoice({
+            appointment,
+            patient,
+            outcome: effectiveOutcome,
+            actorId: req.user.id,
+          });
+          if (autoInvoiceResult?.created && autoInvoiceResult.invoice) {
+            await recordAuditEvent({
+              event: 'invoice.auto_create',
+              success: true,
+              actorId: req.user.id,
+              actorRole: req.user.role,
+              metadata: { invoice_number: autoInvoiceResult.invoice.invoice_number },
+            });
+          }
+        } catch (autoError) {
+          console.error('Failed to create automatic invoice', autoError);
+        }
       }
 
       await recordAuditEvent({
@@ -459,10 +707,22 @@ router.post(
         success: true,
         actorId: req.user.id,
         actorRole: req.user.role,
-        metadata: { appointment_id: appointmentId.toString(), completed: completed === true ? 'true' : 'false' },
+        metadata: {
+          appointment_id: appointmentId.toString(),
+          outcome: effectiveOutcome,
+        },
       });
 
-      return res.json({ success: true, appointment });
+      return res.json({
+        success: true,
+        appointment: toPlainObject(appointment),
+        autoInvoice: autoInvoiceResult
+          ? {
+              invoice_number: autoInvoiceResult.invoice?.invoice_number,
+              created: autoInvoiceResult.created !== false,
+            }
+          : null,
+      });
     } catch (error) {
       return next(error);
     }

@@ -5,9 +5,17 @@ import { Calendar, momentLocalizer, Views } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import '../../styles/calendarOverrides.css';
-import { Box, CircularProgress, Typography } from '@mui/material';
+import {
+  Box,
+  CircularProgress,
+  Typography,
+  TextField,
+  MenuItem,
+} from '@mui/material';
 import { AppointmentsContext } from '../../context/AppointmentsContext';
 import CustomPopup from './CustomPopup';
+import { UserContext } from '../../context/UserContext';
+import useTherapists from '../../hooks/useTherapists';
 
 const localizer = momentLocalizer(moment);
 
@@ -32,12 +40,67 @@ const buildEvent = (appointment) => {
 
 const TUICalendar = () => {
   const { appointments, loading, error } = useContext(AppointmentsContext);
+  const { userData } = useContext(UserContext);
+  const { therapists } = useTherapists();
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isPopupVisible, setPopupVisible] = useState(false);
+  const [selectedClinician, setSelectedClinician] = useState('all');
+
+  const clinicianOptions = useMemo(() => {
+    const base = therapists.map((therapist) => ({
+      value: therapist.employeeID ? `employee:${therapist.employeeID}` : `user:${therapist.id}`,
+      label: therapist.name,
+      employeeID: therapist.employeeID,
+      userId: therapist.id,
+    }));
+    return [{ value: 'all', label: 'All clinicians' }, ...base];
+  }, [therapists]);
+
+  const matchAppointmentToUser = (appointment, user) => {
+    if (!user) {
+      return false;
+    }
+    if (user.role === 'admin') {
+      return true;
+    }
+    const employeeMatches = user.employeeID !== null && user.employeeID !== undefined
+      && Number(appointment.employeeID) === Number(user.employeeID);
+    const therapistMatches = appointment.therapist === user.id
+      || (appointment.therapistId && appointment.therapistId === user.id)
+      || (appointment.therapist && appointment.therapist.toString && appointment.therapist.toString() === user.id);
+    return employeeMatches || therapistMatches;
+  };
+
+  const matchAppointmentToSelection = (appointment) => {
+    if (selectedClinician === 'all') {
+      return true;
+    }
+    if (selectedClinician.startsWith('employee:')) {
+      const id = Number(selectedClinician.split(':')[1]);
+      return Number(appointment.employeeID) === id;
+    }
+    if (selectedClinician.startsWith('user:')) {
+      const userId = selectedClinician.split(':')[1];
+      return (
+        appointment.therapist === userId
+        || appointment.therapistId === userId
+        || (appointment.therapist && appointment.therapist.toString && appointment.therapist.toString() === userId)
+      );
+    }
+    return true;
+  };
+
+  const filteredAppointments = useMemo(() => {
+    const base = Array.isArray(appointments) ? appointments : [];
+    if (userData?.role === 'admin') {
+      return base.filter((appointment) => matchAppointmentToSelection(appointment));
+    }
+    return base.filter((appointment) => matchAppointmentToUser(appointment, userData));
+  }, [appointments, userData, selectedClinician]);
 
   const events = useMemo(
-    () => (Array.isArray(appointments) ? appointments : []).map(buildEvent),
-    [appointments],
+    () => filteredAppointments.map(buildEvent),
+    [filteredAppointments],
   );
 
   const minTime = useMemo(() => moment().startOf('day').hour(7).toDate(), []);
@@ -58,6 +121,24 @@ const TUICalendar = () => {
 
   return (
     <Box className="calendar-shell">
+      {userData?.role === 'admin' && (
+        <Box display="flex" justifyContent="flex-end" mb={2}>
+          <TextField
+            select
+            label="Clinician"
+            value={selectedClinician}
+            onChange={(event) => setSelectedClinician(event.target.value)}
+            size="small"
+            sx={{ minWidth: 220 }}
+          >
+            {clinicianOptions.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Box>
+      )}
       <Calendar
         localizer={localizer}
         events={events}
@@ -66,7 +147,7 @@ const TUICalendar = () => {
         style={{ height: 1020 }}
         min={minTime}
         max={maxTime}
-        views={[Views.DAY, Views.WEEK, Views.AGENDA]}
+        views={[Views.DAY, Views.WEEK, Views.MONTH]}
         defaultView={Views.WEEK}
         eventPropGetter={(event) => {
           const colors = {

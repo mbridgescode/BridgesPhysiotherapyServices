@@ -41,8 +41,17 @@ const appointmentSchema = new Schema({
   completed: { type: Boolean, default: false },
   status: {
     type: String,
-    enum: ['scheduled', 'completed', 'cancelled'],
+    enum: ['scheduled', 'completed', 'cancelled', 'cancelled_same_day', 'other'],
     default: 'scheduled',
+  },
+  completion_status: {
+    type: String,
+    enum: ['scheduled', 'completed', 'cancelled_same_day', 'other'],
+    default: 'scheduled',
+  },
+  completion_note: {
+    type: String,
+    trim: true,
   },
   cancellation_reason: encryptedStringField({ trim: true }),
   cancelled_at: { type: Date },
@@ -52,6 +61,11 @@ const appointmentSchema = new Schema({
   price: { type: Number, required: true },
   recurrence: recurrenceSchema,
   treatment_notes: encryptedStringField({ default: '' }),
+  billing_mode: {
+    type: String,
+    enum: ['individual', 'monthly'],
+    default: 'individual',
+  },
   clinical_notes: {
     type: [
       {

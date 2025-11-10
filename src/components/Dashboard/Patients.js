@@ -71,6 +71,11 @@ const STATUS_OPTIONS = [
   { value: 'archived', label: 'Archived' },
 ];
 
+const BILLING_MODE_OPTIONS = [
+  { value: 'individual', label: 'Individual billing' },
+  { value: 'monthly', label: 'Monthly billing' },
+];
+
 const normalizedStatus = (value) => {
   const normalized = typeof value === 'string' ? value.toLowerCase() : '';
   if (normalized === 'archived') {
@@ -99,6 +104,7 @@ const createEmptyFormState = () => ({
   preferred_name: '',
   date_of_birth: '',
   primaryTherapistId: '',
+  billing_mode: 'individual',
 });
 
 const Patients = ({ userData }) => {
@@ -363,6 +369,7 @@ const Patients = ({ userData }) => {
         const therapistId = patient.primaryTherapist?._id || patient.primaryTherapist?.id;
         return therapistId ? String(therapistId) : '';
       })(),
+      billing_mode: patient.billing_mode || 'individual',
     });
     setFormOpen(true);
   };
@@ -403,17 +410,23 @@ const Patients = ({ userData }) => {
     valueGetter: (row) => formatPatientAddress(row.address),
     render: (row) => formatPatientAddress(row.address) || '--',
   },
-  {
-    id: 'status',
-    label: 'Status (Active / Archived)',
-    type: 'select',
-    options: patientStatusOptions,
+    {
+      id: 'status',
+      label: 'Status (Active / Archived)',
+      type: 'select',
+      options: patientStatusOptions,
       minWidth: 140,
       valueGetter: (row) => normalizedStatus(row.status),
       render: (row) => {
         const status = normalizedStatus(row.status);
         return status === 'archived' ? 'Archived' : 'Active';
       },
+    },
+    {
+      id: 'billing_mode',
+      label: 'Billing Mode',
+      minWidth: 140,
+      render: (row) => (row.billing_mode === 'monthly' ? 'Monthly' : 'Individual'),
     },
     {
       id: 'primaryTherapist',
@@ -521,6 +534,7 @@ const Patients = ({ userData }) => {
         primary_contact_email: formState.primary_contact_email.trim() || undefined,
         primary_contact_phone: formState.primary_contact_phone.trim() || undefined,
       };
+      payload.billing_mode = formState.billing_mode || 'individual';
       const addressPayload = {
         line1: formState.address_line1.trim(),
         line2: formState.address_line2.trim(),
@@ -919,6 +933,21 @@ const Patients = ({ userData }) => {
                 helperText={formErrors.status}
               >
                 {STATUS_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Billing Mode"
+                select
+                fullWidth
+                value={formState.billing_mode}
+                onChange={(event) => setFormState((prev) => ({ ...prev, billing_mode: event.target.value }))}
+              >
+                {BILLING_MODE_OPTIONS.map((option) => (
                   <MenuItem key={option.value} value={option.value}>
                     {option.label}
                   </MenuItem>

@@ -105,7 +105,7 @@ const sanitizeUser = (user) => ({
 });
 
 const signAccessToken = (user) => jwt.sign(
-  { userId: user.id, role: user.role },
+  { userId: user.id, role: user.role, employeeID: user.employeeID ?? null },
   accessTokenSecret,
   { expiresIn: accessTokenExpiresIn },
 );

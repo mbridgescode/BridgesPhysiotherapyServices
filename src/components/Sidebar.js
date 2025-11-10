@@ -103,7 +103,7 @@ const Sidebar = ({ collapsed = false, onToggleCollapse = () => {} }) => {
       label: 'Profit & Loss',
       icon: <ProfitLossIcon />,
       path: '/dashboard/profit-loss',
-      roles: ['admin', 'receptionist'],
+      roles: ['admin', 'receptionist', 'therapist'],
     },
     {
       label: 'Admin',

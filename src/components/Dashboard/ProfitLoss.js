@@ -19,7 +19,12 @@ import {
   DialogActions,
 } from '@mui/material';
 import { makeStyles } from '@mui/styles';
-import { format as formatDate, subDays } from 'date-fns';
+import {
+  format as formatDate,
+  subDays,
+  startOfMonth,
+  startOfYear,
+} from 'date-fns';
 import DownloadIcon from '@mui/icons-material/Download';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -48,6 +53,13 @@ const buildDefaultRange = () => {
     end: formatDate(end, 'yyyy-MM-dd'),
   };
 };
+
+const PRESET_FILTERS = [
+  { key: '30d', label: 'Last 30 days', compute: () => ({ start: subDays(new Date(), 30), end: new Date() }) },
+  { key: '90d', label: 'Last 90 days', compute: () => ({ start: subDays(new Date(), 90), end: new Date() }) },
+  { key: 'month', label: 'This month', compute: () => ({ start: startOfMonth(new Date()), end: new Date() }) },
+  { key: 'ytd', label: 'Year to date', compute: () => ({ start: startOfYear(new Date()), end: new Date() }) },
+];
 
 const formatCurrency = (value = 0, currency = 'GBP') =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(Number(value) || 0);
@@ -80,6 +92,7 @@ const createManualEntryState = () => ({
 const ProfitLoss = () => {
   const classes = useStyles();
   const [range, setRange] = useState(buildDefaultRange());
+  const [activePreset, setActivePreset] = useState('90d');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [totals, setTotals] = useState({ income: 0, expense: 0 });
@@ -135,6 +148,7 @@ const ProfitLoss = () => {
       ...prev,
       [field]: event.target.value,
     }));
+    setActivePreset(null);
   };
 
   const handleNewEntryChange = (field) => (event) => {
@@ -142,6 +156,19 @@ const ProfitLoss = () => {
       ...prev,
       [field]: event.target.value,
     }));
+  };
+
+  const applyPreset = (presetKey) => {
+    const preset = PRESET_FILTERS.find((option) => option.key === presetKey);
+    if (!preset) {
+      return;
+    }
+    const { start, end } = preset.compute();
+    setRange({
+      start: formatDate(start, 'yyyy-MM-dd'),
+      end: formatDate(end, 'yyyy-MM-dd'),
+    });
+    setActivePreset(presetKey);
   };
 
   const handleCreateEntry = async (event) => {
@@ -193,6 +220,10 @@ const ProfitLoss = () => {
     if (!editDialog.entry) {
       return;
     }
+    const confirmed = window.confirm('Are you sure you want to apply these changes?');
+    if (!confirmed) {
+      return;
+    }
     try {
       await apiClient.put(`/api/profit-loss/manual/${editDialog.entry.entry_id}`, {
         date: editDialog.entry.date,
@@ -213,7 +244,7 @@ const ProfitLoss = () => {
   };
 
   const handleDeleteEntry = async (entry) => {
-    if (!window.confirm('Delete this expense entry?')) {
+    if (!window.confirm('Are you sure you want to delete this entry?')) {
       return;
     }
     try {
@@ -341,7 +372,7 @@ const ProfitLoss = () => {
             </Grid>
             <Grid item xs={12} md={3}>
               <Button variant="outlined" onClick={fetchProfitLoss} sx={{ mt: { xs: 2, md: 3.5 } }}>
-                Apply Filters
+                Refresh
               </Button>
             </Grid>
             <Grid item xs={12} md={3} display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
@@ -361,6 +392,25 @@ const ProfitLoss = () => {
               </Tooltip>
             </Grid>
           </Grid>
+          <Box
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 1,
+              mt: 2,
+            }}
+          >
+            {PRESET_FILTERS.map((preset) => (
+              <Button
+                key={preset.key}
+                size="small"
+                variant={activePreset === preset.key ? 'contained' : 'outlined'}
+                onClick={() => applyPreset(preset.key)}
+              >
+                {preset.label}
+              </Button>
+            ))}
+          </Box>
         </CardContent>
       </Card>
 

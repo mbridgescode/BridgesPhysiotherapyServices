@@ -13,6 +13,8 @@ import {
   CardContent,
   Typography,
   Checkbox,
+  Radio,
+  RadioGroup,
   FormControlLabel,
   TextField,
   Divider,
@@ -68,6 +70,30 @@ const buildPatientLabel = (patient) => {
   return baseName;
 };
 
+const COMPLETION_OUTCOME_OPTIONS = [
+  { value: 'completed', label: 'Completed (patient seen)' },
+  { value: 'cancelled_same_day', label: 'Cancelled on the day (50% fee)' },
+  { value: 'other', label: 'Other (add note)' },
+];
+
+const formatStatusLabel = (status) => {
+  if (!status) {
+    return 'Scheduled';
+  }
+  switch (status) {
+    case 'completed':
+      return 'Completed';
+    case 'cancelled_same_day':
+      return 'Cancelled on the day';
+    case 'other':
+      return 'Other';
+    case 'cancelled':
+      return 'Cancelled';
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+};
+
 const Appointments = ({ userData }) => {
   const classes = useStyles();
   const [searchTerm, setSearchTerm] = useState('');
@@ -97,6 +123,14 @@ const Appointments = ({ userData }) => {
     therapistName: '',
     therapistId: userData?.id || '',
     sendConfirmationEmail: true,
+  });
+  const [completionDialog, setCompletionDialog] = useState({
+    open: false,
+    appointment: null,
+    outcome: 'completed',
+    note: '',
+    submitting: false,
+    error: '',
   });
 
   useEffect(() => {
@@ -178,40 +212,79 @@ const Appointments = ({ userData }) => {
     loadTreatments();
   }, []);
 
-  // Handle appointment completion toggle
-  const handleCompleteToggle = async (appointment_id, isCompleted) => {
-    try {
-      const response = await apiClient.post(
-        '/api/appointments/complete',
-        { appointment_id, completed: !isCompleted },
-      );
-
-      if (response.status === 200) {
-        // Update the local state
-        setAppointments((prevAppointments) =>
-          prevAppointments.map((appointment) =>
-            appointment.appointment_id === appointment_id
-              ? {
-                ...appointment,
-                completed: !isCompleted,
-                status: !isCompleted ? 'completed' : 'scheduled',
-              }
-              : appointment
-          )
-        );
-        refreshAppointments();
-      }
-    } catch (error) {
-      console.error('Error toggling appointment complete status:', error.response ? error.response.data : error.message);
-    }
-  };
-
   const handleCancelAppointment = async (appointmentId) => {
     try {
       await apiClient.patch(`/api/appointments/${appointmentId}/cancel`, { reason: 'Cancelled via dashboard' });
       refreshAppointments();
     } catch (err) {
       console.error('Failed to cancel appointment', err);
+    }
+  };
+
+  const openCompletionDialog = (appointment) => {
+    const allowedValues = COMPLETION_OUTCOME_OPTIONS.map((option) => option.value);
+    const nextOutcome = allowedValues.includes(appointment.completion_status)
+      ? appointment.completion_status
+      : 'completed';
+    setCompletionDialog({
+      open: true,
+      appointment,
+      outcome: nextOutcome,
+      note: appointment.completion_note || '',
+      submitting: false,
+      error: '',
+    });
+  };
+
+  const closeCompletionDialog = () => {
+    setCompletionDialog((prev) => {
+      if (prev.submitting) {
+        return prev;
+      }
+      return {
+        open: false,
+        appointment: null,
+        outcome: 'completed',
+        note: '',
+        submitting: false,
+        error: '',
+      };
+    });
+  };
+
+  const submitCompletionOutcome = async () => {
+    if (!completionDialog.appointment) {
+      return;
+    }
+    if (completionDialog.outcome === 'other' && !completionDialog.note.trim()) {
+      setCompletionDialog((prev) => ({ ...prev, error: 'Please provide a note for this outcome.' }));
+      return;
+    }
+    setCompletionDialog((prev) => ({ ...prev, submitting: true, error: '' }));
+    try {
+      const response = await apiClient.post('/api/appointments/complete', {
+        appointment_id: completionDialog.appointment.appointment_id,
+        outcome: completionDialog.outcome,
+        note: completionDialog.note,
+      });
+      const updated = response.data?.appointment;
+      if (updated) {
+        setAppointments((prevAppointments) =>
+          prevAppointments.map((appointment) =>
+            appointment.appointment_id === updated.appointment_id
+              ? { ...appointment, ...updated }
+              : appointment,
+          ),
+        );
+      }
+      setSubmitSuccess('Appointment updated');
+      closeCompletionDialog();
+      refreshAppointments();
+    } catch (err) {
+      const message = err?.response?.data?.message || 'Unable to update appointment outcome';
+      setCompletionDialog((prev) => ({ ...prev, error: message }));
+    } finally {
+      setCompletionDialog((prev) => ({ ...prev, submitting: false }));
     }
   };
 
@@ -232,7 +305,7 @@ const Appointments = ({ userData }) => {
         ),
       ).map((status) => ({
         value: status,
-        label: status.charAt(0).toUpperCase() + status.slice(1),
+        label: formatStatusLabel(status),
       })),
     [appointments],
   );
@@ -312,6 +385,7 @@ const Appointments = ({ userData }) => {
       type: 'select',
       options: appointmentStatusOptions,
       minWidth: 140,
+      render: (row) => formatStatusLabel(row.status),
     },
     {
       id: 'contact',
@@ -327,23 +401,30 @@ const Appointments = ({ userData }) => {
       render: (row) => row.paymentStatus || 'Pending',
     },
     {
-      id: 'completed',
-      label: 'Complete',
+      id: 'completion_status',
+      label: 'Outcome',
       sortable: false,
       filterable: false,
-      minWidth: 80,
+      minWidth: 180,
       render: (row) => (
-        <Checkbox
-          checked={row.completed}
-          onChange={() => handleCompleteToggle(row.appointment_id, row.completed)}
-        />
+        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+          <Typography variant="body2" fontWeight={600}>
+            {formatStatusLabel(row.status || row.completion_status)}
+          </Typography>
+          {row.completion_note && (
+            <Typography variant="caption" color="text.secondary">
+              {row.completion_note}
+            </Typography>
+          )}
+        </Box>
       ),
     },
   ];
 
   const canManageAppointments = ['admin', 'receptionist'].includes(userData?.role);
+  const canUpdateOutcome = ['admin', 'therapist'].includes(userData?.role);
 
-  if (canManageAppointments) {
+  if (canManageAppointments || canUpdateOutcome) {
     appointmentColumns.push({
       id: 'actions',
       label: 'Actions',
@@ -352,15 +433,28 @@ const Appointments = ({ userData }) => {
       filterable: false,
       minWidth: 120,
       render: (row) => (
-        <Button
-          size="small"
-          color="warning"
-          onClick={() => handleCancelAppointment(row.appointment_id)}
-          disabled={row.status === 'cancelled'}
-          sx={{ color: '#fff' }}
-        >
-          Cancel
-        </Button>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+          {canUpdateOutcome && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => openCompletionDialog(row)}
+            >
+              Update outcome
+            </Button>
+          )}
+          {canManageAppointments && (
+            <Button
+              size="small"
+              color="warning"
+              onClick={() => handleCancelAppointment(row.appointment_id)}
+              disabled={row.status === 'cancelled'}
+              sx={{ color: '#fff' }}
+            >
+              Cancel
+            </Button>
+          )}
+        </Box>
       ),
     });
   }
@@ -926,6 +1020,43 @@ const Appointments = ({ userData }) => {
           </Button>
           <Button onClick={handleCreateAppointment} variant="contained" disabled={submitting}>
             {submitting ? 'Saving...' : 'Save Appointment'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={completionDialog.open} onClose={closeCompletionDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Update appointment outcome</DialogTitle>
+        <DialogContent dividers>
+          <RadioGroup
+            value={completionDialog.outcome}
+            onChange={(event) => setCompletionDialog((prev) => ({ ...prev, outcome: event.target.value }))}
+          >
+            {COMPLETION_OUTCOME_OPTIONS.map((option) => (
+              <FormControlLabel key={option.value} value={option.value} control={<Radio />} label={option.label} />
+            ))}
+          </RadioGroup>
+          {completionDialog.outcome === 'other' && (
+            <TextField
+              label="Outcome note"
+              value={completionDialog.note}
+              onChange={(event) => setCompletionDialog((prev) => ({ ...prev, note: event.target.value }))}
+              fullWidth
+              multiline
+              minRows={3}
+              sx={{ mt: 2 }}
+            />
+          )}
+          {completionDialog.error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {completionDialog.error}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeCompletionDialog} disabled={completionDialog.submitting} sx={{ color: '#fff' }}>
+            Cancel
+          </Button>
+          <Button onClick={submitCompletionOutcome} variant="contained" disabled={completionDialog.submitting}>
+            {completionDialog.submitting ? 'Saving...' : 'Save Outcome'}
           </Button>
         </DialogActions>
       </Dialog>

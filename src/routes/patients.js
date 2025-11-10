@@ -12,6 +12,7 @@ const { fetchPaymentStatus } = require('../utils/payments');
 const { recordAuditEvent } = require('../utils/audit');
 const { buildTokensFromSearchQuery } = require('../utils/patientSecurity');
 const { toPlainObject } = require('../utils/mongoose');
+const { buildPatientScopeQuery, userCanAccessPatient } = require('../utils/accessControl');
 
 const router = express.Router();
 
@@ -45,6 +46,8 @@ const calculateAge = (value, referenceDate = new Date()) => {
   }
   return age;
 };
+
+const normalizeBillingMode = (value) => (value === 'monthly' ? 'monthly' : 'individual');
 
 router.get(
   '/retention/report',
@@ -117,6 +120,11 @@ router.get(
         query.searchTokens = { $all: searchTokens };
       }
 
+      const scopeQuery = buildPatientScopeQuery(req.user);
+      if (scopeQuery) {
+        query.$and = [...(query.$and || []), scopeQuery];
+      }
+
       const patientDocs = await Patient.find(query)
         .limit(Number(limit))
         .sort({ updatedAt: -1 })
@@ -174,9 +182,13 @@ router.get(
         };
       }));
 
+      const scopedResult = req.user.role === 'admin'
+        ? result
+        : result.filter((patient) => userCanAccessPatient(patient, req.user));
+
       res.json({
         success: true,
-        patients: result,
+        patients: scopedResult,
       });
     } catch (error) {
       next(error);
@@ -216,6 +228,8 @@ router.post(
         createdBy: req.user.id,
         updatedBy: req.user.id,
       };
+
+      payload.billing_mode = normalizeBillingMode(payload.billing_mode);
 
       if (therapistRecord) {
         payload.primaryTherapist = therapistRecord._id;
@@ -271,6 +285,10 @@ router.put(
         updatedBy: req.user.id,
       };
 
+      if (body.billing_mode !== undefined) {
+        update.billing_mode = normalizeBillingMode(body.billing_mode);
+      }
+
       const normalizedPrimaryTherapistEmployeeId = toNumberOrUndefined(primaryTherapistEmployeeId);
       if (primaryTherapistEmployeeId !== undefined && normalizedPrimaryTherapistEmployeeId === undefined) {
         return res.status(400).json({ success: false, message: 'primary_therapist_id must be numeric' });
@@ -302,6 +320,10 @@ router.put(
 
       if (!patient) {
         return res.status(404).json({ success: false, message: 'Patient not found' });
+      }
+
+      if (!userCanAccessPatient(serializePatient(patient), req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
       Object.entries(update).forEach(([key, value]) => {
@@ -473,6 +495,9 @@ router.get(
       }
 
       const patient = toPlainObject(patientDoc);
+      if (!userCanAccessPatient(patient, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
 
       const [appointmentDocs, noteDocs, invoiceDocs, paymentDocs, communicationDocs] = await Promise.all([
         Appointment.find({ patient_id: patientId }).sort({ date: -1 }),

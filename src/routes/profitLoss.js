@@ -2,12 +2,14 @@ const express = require('express');
 const exceljs = require('exceljs');
 const ProfitLossEntry = require('../models/profitLossEntry');
 const Invoice = require('../models/invoices');
+const Patient = require('../models/patients');
 const { authenticate, authorize } = require('../middleware/auth');
 const { recordAuditEvent } = require('../utils/audit');
+const { buildPatientScopeQuery } = require('../utils/accessControl');
 
 const router = express.Router();
 
-const allowedRoles = ['admin', 'receptionist'];
+const allowedRoles = ['admin', 'receptionist', 'therapist'];
 
 const parseDateRange = (start, end) => {
   const now = new Date();
@@ -71,14 +73,40 @@ router.get(
   async (req, res, next) => {
     try {
       const { startDate, endDate } = parseDateRange(req.query.start, req.query.end);
-      const [manualEntries, invoices] = await Promise.all([
-        ProfitLossEntry.find({
-          date: { $gte: startDate, $lte: endDate },
-        }).sort({ date: -1 }),
-        Invoice.find({
-          issue_date: { $gte: startDate, $lte: endDate },
-        }).select('invoice_number issue_date totals total_due patient_name'),
-      ]);
+      let scopedPatientIdsSet = null;
+      if (req.user.role !== 'admin') {
+        const scopeQuery = buildPatientScopeQuery(req.user);
+        if (scopeQuery) {
+          const scopedPatients = await Patient.find(scopeQuery).select('patient_id');
+          scopedPatientIdsSet = new Set(scopedPatients.map((doc) => doc.patient_id));
+        } else {
+          scopedPatientIdsSet = new Set();
+        }
+      }
+
+      const manualQuery = {
+        date: { $gte: startDate, $lte: endDate },
+      };
+      if (req.user.role !== 'admin') {
+        manualQuery.createdBy = req.user.id;
+      }
+
+      const manualEntries = await ProfitLossEntry.find(manualQuery).sort({ date: -1 });
+
+      let invoices = [];
+      const invoiceQuery = {
+        issue_date: { $gte: startDate, $lte: endDate },
+      };
+      if (scopedPatientIdsSet) {
+        if (scopedPatientIdsSet.size > 0) {
+          invoiceQuery.patient_id = { $in: Array.from(scopedPatientIdsSet) };
+          invoices = await Invoice.find(invoiceQuery)
+            .select('invoice_number issue_date totals total_due patient_name patient_id');
+        }
+      } else {
+        invoices = await Invoice.find(invoiceQuery)
+          .select('invoice_number issue_date totals total_due patient_name patient_id');
+      }
 
       const manual = manualEntries.map(normalizeManualEntry);
       const invoiceEntries = buildInvoiceEntries(invoices);
@@ -279,14 +307,40 @@ router.get(
       const { startDate, endDate } = parseDateRange(req.query.start, req.query.end);
       const format = (req.query.format || 'xlsx').toLowerCase();
 
-      const [manualEntries, invoices] = await Promise.all([
-        ProfitLossEntry.find({
-          date: { $gte: startDate, $lte: endDate },
-        }).sort({ date: 1 }),
-        Invoice.find({
-          issue_date: { $gte: startDate, $lte: endDate },
-        }).select('invoice_number issue_date totals total_due patient_name'),
-      ]);
+      let scopedPatientIdsSet = null;
+      if (req.user.role !== 'admin') {
+        const scopeQuery = buildPatientScopeQuery(req.user);
+        if (scopeQuery) {
+          const scopedPatients = await Patient.find(scopeQuery).select('patient_id');
+          scopedPatientIdsSet = new Set(scopedPatients.map((doc) => doc.patient_id));
+        } else {
+          scopedPatientIdsSet = new Set();
+        }
+      }
+
+      const manualQuery = {
+        date: { $gte: startDate, $lte: endDate },
+      };
+      if (req.user.role !== 'admin') {
+        manualQuery.createdBy = req.user.id;
+      }
+
+      const manualEntries = await ProfitLossEntry.find(manualQuery).sort({ date: 1 });
+
+      let invoices = [];
+      const invoiceQuery = {
+        issue_date: { $gte: startDate, $lte: endDate },
+      };
+      if (scopedPatientIdsSet) {
+        if (scopedPatientIdsSet.size > 0) {
+          invoiceQuery.patient_id = { $in: Array.from(scopedPatientIdsSet) };
+          invoices = await Invoice.find(invoiceQuery)
+            .select('invoice_number issue_date totals total_due patient_name patient_id');
+        }
+      } else {
+        invoices = await Invoice.find(invoiceQuery)
+          .select('invoice_number issue_date totals total_due patient_name patient_id');
+      }
 
       const manual = manualEntries.map(normalizeManualEntry);
       const invoiceEntries = buildInvoiceEntries(invoices);

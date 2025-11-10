@@ -16,7 +16,12 @@ const authenticate = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, accessTokenSecret);
-    req.user = { id: decoded.userId, role: decoded.role };
+    const numericEmployeeId = Number(decoded.employeeID);
+    req.user = {
+      id: decoded.userId,
+      role: decoded.role,
+      employeeID: Number.isNaN(numericEmployeeId) ? null : numericEmployeeId,
+    };
     return next();
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });

@@ -100,6 +100,11 @@ const PatientSchema = new mongoose.Schema({
     type: [String],
     default: [],
   },
+  billing_mode: {
+    type: String,
+    enum: ['individual', 'monthly'],
+    default: 'individual',
+  },
   consent_signed_at: encryptedDateField({}),
   notes_summary: encryptedStringField({
     trim: true,

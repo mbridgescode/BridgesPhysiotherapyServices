@@ -369,8 +369,8 @@ const Invoices = () => {
     }
     const paymentStatus = (appointment.paymentStatus || '').toLowerCase();
     const status = (appointment.status || '').toLowerCase();
-    const completed = status === 'completed';
-    if (!completed) {
+    const qualifiesForBilling = status === 'completed' || status === 'cancelled_same_day';
+    if (!qualifiesForBilling) {
       return false;
     }
     return paymentStatus !== 'paid'

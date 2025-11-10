@@ -13,6 +13,7 @@ const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
 const { buildInvoiceDeliveryEmail } = require('../templates/email/invoiceDeliveryEmail');
 const { calculateTotals, refreshInvoiceWithPayments } = require('../utils/invoices');
+const { buildPatientScopeQuery, userCanAccessPatient } = require('../utils/accessControl');
 const { toPlainObject } = require('../utils/mongoose');
 
 const router = express.Router();
@@ -270,7 +271,7 @@ const buildInvoiceExportPayload = async ({ invoice, patient, billingContact }) =
 router.get(
   '/',
   authenticate,
-  authorize('admin', 'receptionist'),
+  authorize('admin', 'receptionist', 'therapist'),
   async (req, res, next) => {
     try {
       const {
@@ -298,6 +299,28 @@ router.get(
         }
         if (to) {
           query.issue_date.$lte = new Date(to);
+        }
+      }
+
+      let scopedPatientIdsSet = null;
+      if (req.user.role !== 'admin') {
+        const scopeQuery = buildPatientScopeQuery(req.user);
+        if (scopeQuery) {
+          const scopedPatientDocs = await Patient.find(scopeQuery).select('patient_id');
+          scopedPatientIdsSet = new Set(scopedPatientDocs.map((doc) => doc.patient_id));
+          if (scopedPatientIdsSet.size === 0) {
+            return res.json({ success: true, invoices: [] });
+          }
+          if (query.patient_id) {
+            const requested = Number(query.patient_id);
+            if (Number.isNaN(requested) || !scopedPatientIdsSet.has(requested)) {
+              return res.json({ success: true, invoices: [] });
+            }
+          } else {
+            query.patient_id = { $in: Array.from(scopedPatientIdsSet) };
+          }
+        } else {
+          query.createdBy = req.user.id;
         }
       }
 
@@ -331,9 +354,22 @@ router.get(
         patient: patientMap.get(invoice.patient_id),
       }));
 
+      const filteredPayload = req.user.role === 'admin'
+        ? payload
+        : payload.filter((invoice) => {
+          const patient = patientMap.get(invoice.patient_id);
+          if (patient && userCanAccessPatient(patient, req.user)) {
+            return true;
+          }
+          if (invoice.createdBy && invoice.createdBy.toString && invoice.createdBy.toString() === String(req.user.id)) {
+            return true;
+          }
+          return false;
+        });
+
       res.json({
         success: true,
-        invoices: payload,
+        invoices: filteredPayload,
       });
     } catch (error) {
       next(error);
@@ -355,6 +391,13 @@ router.get(
 
       const patientDoc = await Patient.findOne({ patient_id: invoice.patient_id });
       const patient = toPlainObject(patientDoc);
+      if (
+        req.user.role !== 'admin'
+        && !userCanAccessPatient(patient, req.user)
+        && !(invoice.createdBy && invoice.createdBy.toString && invoice.createdBy.toString() === String(req.user.id))
+      ) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
       const refreshed = await refreshInvoiceWithPayments(invoice);
       res.json({
         success: true,
