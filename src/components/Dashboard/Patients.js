@@ -396,34 +396,18 @@ const Patients = ({ userData }) => {
       label: 'Phone',
       minWidth: 150,
     },
-    {
-      id: 'address',
-      label: 'Address',
-      minWidth: 240,
-      valueGetter: (row) => formatPatientAddress(row.address),
-      render: (row) => formatPatientAddress(row.address) || '--',
-    },
-    {
-      id: 'primary_contact_name',
-      label: 'Primary Contact Name',
-      minWidth: 200,
-      render: (row) => row.primary_contact_name || '--',
-    },
-    {
-      id: 'primary_contact_email',
-      label: 'Primary Contact Email',
-      minWidth: 220,
-    },
-    {
-      id: 'primary_contact_phone',
-      label: 'Primary Contact Phone',
-      minWidth: 180,
-    },
-    {
-      id: 'status',
-      label: 'Status (Active / Archived)',
-      type: 'select',
-      options: patientStatusOptions,
+  {
+    id: 'address',
+    label: 'Address',
+    minWidth: 240,
+    valueGetter: (row) => formatPatientAddress(row.address),
+    render: (row) => formatPatientAddress(row.address) || '--',
+  },
+  {
+    id: 'status',
+    label: 'Status (Active / Archived)',
+    type: 'select',
+    options: patientStatusOptions,
       minWidth: 140,
       valueGetter: (row) => normalizedStatus(row.status),
       render: (row) => {

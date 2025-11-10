@@ -20,11 +20,18 @@ import {
   TextField,
   Tooltip,
   Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import apiClient from '../../utils/apiClient';
 import { UserContext } from '../../context/UserContext';
 import DataTable from '../common/DataTable';
+import useTreatmentNoteTemplates from '../../hooks/useTreatmentNoteTemplates';
 
 const REQUEST_TYPES = [
   { value: 'access', label: 'Access' },
@@ -82,8 +89,23 @@ const Settings = () => {
   const [retentionLoading, setRetentionLoading] = useState(false);
   const [retentionError, setRetentionError] = useState('');
   const [anonymizingPatientId, setAnonymizingPatientId] = useState(null);
+  const [templateDialog, setTemplateDialog] = useState({
+    open: false,
+    id: null,
+    name: '',
+    body: '',
+  });
+  const [templateDialogError, setTemplateDialogError] = useState('');
+  const [templateSaving, setTemplateSaving] = useState(false);
 
   const isAdmin = userData?.role === 'admin';
+  const canManageTemplates = ['admin', 'therapist'].includes(userData?.role);
+  const {
+    templates: treatmentNoteTemplates,
+    loading: templatesLoading,
+    error: templatesError,
+    refreshTemplates,
+  } = useTreatmentNoteTemplates({ enabled: canManageTemplates });
 
   const loadSettings = async () => {
     setLoading(true);
@@ -127,6 +149,93 @@ const Settings = () => {
       enabled: Boolean(userData?.twoFactorEnabled),
     }));
   }, [userData?.twoFactorEnabled]);
+
+  const openNewTemplateDialog = () => {
+    setTemplateDialog({
+      open: true,
+      id: null,
+      name: '',
+      body: '',
+    });
+    setTemplateDialogError('');
+  };
+
+  const openEditTemplateDialog = (template) => {
+    setTemplateDialog({
+      open: true,
+      id: template.id,
+      name: template.name,
+      body: template.body,
+    });
+    setTemplateDialogError('');
+  };
+
+  const closeTemplateDialog = () => {
+    if (templateSaving) {
+      return;
+    }
+    setTemplateDialog({
+      open: false,
+      id: null,
+      name: '',
+      body: '',
+    });
+    setTemplateDialogError('');
+  };
+
+  const handleTemplateFieldChange = (field) => (event) => {
+    const { value } = event.target;
+    setTemplateDialog((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!templateDialog.name.trim()) {
+      setTemplateDialogError('Template name is required');
+      return;
+    }
+    if (!templateDialog.body.trim()) {
+      setTemplateDialogError('Template body is required');
+      return;
+    }
+    setTemplateSaving(true);
+    setTemplateDialogError('');
+    try {
+      if (templateDialog.id) {
+        await apiClient.put(`/api/treatment-note-templates/${templateDialog.id}`, {
+          name: templateDialog.name.trim(),
+          body: templateDialog.body.trim(),
+        });
+      } else {
+        await apiClient.post('/api/treatment-note-templates', {
+          name: templateDialog.name.trim(),
+          body: templateDialog.body.trim(),
+        });
+      }
+      await refreshTemplates();
+      closeTemplateDialog();
+    } catch (err) {
+      console.error('Failed to save template', err);
+      setTemplateDialogError(err?.response?.data?.message || 'Unable to save template');
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (template) => {
+    if (!window.confirm(`Delete template "${template.name}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await apiClient.delete(`/api/treatment-note-templates/${template.id}`);
+      await refreshTemplates();
+    } catch (err) {
+      console.error('Failed to delete treatment template', err);
+      setTemplateDialogError(err?.response?.data?.message || 'Unable to delete template');
+    }
+  };
 
   useEffect(() => {
     if (!isAdmin) {
@@ -554,6 +663,64 @@ const Settings = () => {
             </IconButton>
           </span>
         </Tooltip>
+      ),
+    },
+  ];
+
+  const templateColumns = [
+    {
+      id: 'name',
+      label: 'Template Name',
+      minWidth: 220,
+    },
+    {
+      id: 'preview',
+      label: 'Preview',
+      minWidth: 320,
+      sortable: false,
+      filterable: false,
+      render: (row) => {
+        if (!row.body) {
+          return '—';
+        }
+        const preview = row.body.length > 180 ? `${row.body.slice(0, 180)}...` : row.body;
+        return (
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
+            {preview}
+          </Typography>
+        );
+      },
+    },
+    {
+      id: 'updatedAt',
+      label: 'Updated',
+      type: 'date',
+      minWidth: 160,
+      valueGetter: (row) => row.updatedAt,
+      render: (row) => (row.updatedAt ? new Date(row.updatedAt).toLocaleString() : '--'),
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      align: 'right',
+      sortable: false,
+      filterable: false,
+      minWidth: 140,
+      render: (row) => (
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+          <Tooltip title="Edit template">
+            <IconButton size="small" onClick={() => openEditTemplateDialog(row)}>
+              <EditIcon fontSize="inherit" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete template">
+            <span>
+              <IconButton size="small" onClick={() => handleDeleteTemplate(row)}>
+                <DeleteOutlineIcon fontSize="inherit" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
       ),
     },
   ];
@@ -1057,6 +1224,42 @@ const Settings = () => {
         </CardContent>
       </Card>
 
+      {canManageTemplates && (
+        <Card id="treatment-note-templates">
+          <CardContent>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Box>
+                <Typography variant="h5" gutterBottom>
+                  Treatment Note Templates
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Create reusable note structures to speed up clinical documentation.
+                </Typography>
+              </Box>
+              <Button variant="contained" onClick={openNewTemplateDialog}>
+                New Template
+              </Button>
+            </Box>
+            {templatesError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {templatesError}
+              </Alert>
+            )}
+            {templatesLoading ? (
+              <CircularProgress size={24} />
+            ) : (
+              <DataTable
+                columns={templateColumns}
+                rows={treatmentNoteTemplates}
+                getRowId={(row) => row.id}
+                maxHeight={400}
+                emptyMessage="No templates yet."
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
+
     <Card>
       <CardContent>
         <Typography variant="h5" gutterBottom>
@@ -1125,8 +1328,44 @@ const Settings = () => {
               emptyMessage="No services configured."
             />
           )}
-        </CardContent>
-      </Card>
+      </CardContent>
+    </Card>
+      {canManageTemplates && (
+        <Dialog open={templateDialog.open} onClose={closeTemplateDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>{templateDialog.id ? 'Edit Template' : 'New Template'}</DialogTitle>
+          <DialogContent dividers>
+            <Box display="flex" flexDirection="column" gap={2}>
+              <TextField
+                label="Template Name"
+                value={templateDialog.name}
+                onChange={handleTemplateFieldChange('name')}
+                required
+              />
+              <TextField
+                label="Template Body"
+                value={templateDialog.body}
+                onChange={handleTemplateFieldChange('body')}
+                multiline
+                minRows={6}
+                required
+              />
+              {templateDialogError && (
+                <Alert severity="error">
+                  {templateDialogError}
+                </Alert>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeTemplateDialog} disabled={templateSaving} sx={{ color: '#fff' }}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveTemplate} disabled={templateSaving} variant="contained">
+              {templateSaving ? 'Saving...' : 'Save Template'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Box>
   );
 };

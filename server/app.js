@@ -15,6 +15,7 @@ const reportsRouter = require('../src/routes/reports');
 const auditRouter = require('../src/routes/audit');
 const servicesRouter = require('../src/routes/services');
 const dataRequestsRouter = require('../src/routes/dataRequests');
+const treatmentNoteTemplatesRouter = require('../src/routes/treatmentNoteTemplates');
 const {
   host,
   corsOrigin,
@@ -93,6 +94,7 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/data-requests', dataRequestsRouter);
+app.use('/api/treatment-note-templates', treatmentNoteTemplatesRouter);
 
 app.get('/healthz', (req, res) => {
   res.json({ status: 'ok', environment: nodeEnv, timestamp: new Date().toISOString() });

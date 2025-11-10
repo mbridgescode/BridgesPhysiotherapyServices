@@ -17,13 +17,23 @@ import {
   MenuItem,
   Alert,
   Snackbar,
+  IconButton,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import { makeStyles } from '@mui/styles';
-import { useParams } from 'react-router-dom';
+import { Link as RouterLink, useParams } from 'react-router-dom';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import SaveAltIcon from '@mui/icons-material/SaveAlt';
+import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import apiClient from '../../utils/apiClient';
 import { UserContext } from '../../context/UserContext';
 import { AppointmentsContext } from '../../context/AppointmentsContext';
 import DataTable from '../common/DataTable';
+import useTreatmentNoteTemplates from '../../hooks/useTreatmentNoteTemplates';
 
 const useStyles = makeStyles((theme) => ({
   section: {
@@ -62,6 +72,10 @@ const PatientDetails = () => {
   const [savingTreatmentNote, setSavingTreatmentNote] = useState(false);
   const [treatmentNoteSuccess, setTreatmentNoteSuccess] = useState('');
   const [treatmentNoteError, setTreatmentNoteError] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [saveTemplateDialog, setSaveTemplateDialog] = useState({ open: false, name: '' });
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [saveTemplateError, setSaveTemplateError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState('');
   const [exportError, setExportError] = useState('');
@@ -72,6 +86,12 @@ const PatientDetails = () => {
   const notes = details?.notes || [];
   const communications = details?.communications || [];
   const canExportPatient = userData?.role === 'admin';
+  const {
+    templates: noteTemplates,
+    loading: templatesLoading,
+    error: templatesFetchError,
+    refreshTemplates: refreshNoteTemplates,
+  } = useTreatmentNoteTemplates({ enabled: canEditNotes });
 
   const loadDetails = async () => {
     setLoading(true);
@@ -197,6 +217,60 @@ const PatientDetails = () => {
     }
   };
 
+  const handleApplyTemplateToNote = () => {
+    if (!selectedTemplate) {
+      return;
+    }
+    setTreatmentNote(selectedTemplate.body);
+    setTreatmentNoteError('');
+  };
+
+  const openSaveTemplateDialog = () => {
+    if (!treatmentNote.trim()) {
+      return;
+    }
+    const fallbackName = selectedTreatment?.treatment_description
+      ? `${selectedTreatment.treatment_description} Note`
+      : `Template ${new Date().toLocaleDateString('en-GB')}`;
+    setSaveTemplateDialog({ open: true, name: fallbackName });
+    setSaveTemplateError('');
+  };
+
+  const closeSaveTemplateDialog = () => {
+    if (savingTemplate) {
+      return;
+    }
+    setSaveTemplateDialog({ open: false, name: '' });
+    setSaveTemplateError('');
+  };
+
+  const handleSaveTemplateFromNote = async () => {
+    if (!treatmentNote.trim()) {
+      setSaveTemplateError('Enter a treatment note first');
+      return;
+    }
+    if (!saveTemplateDialog.name.trim()) {
+      setSaveTemplateError('Template name is required');
+      return;
+    }
+    setSavingTemplate(true);
+    setSaveTemplateError('');
+    try {
+      await apiClient.post('/api/treatment-note-templates', {
+        name: saveTemplateDialog.name.trim(),
+        body: treatmentNote.trim(),
+      });
+      setTreatmentNoteSuccess('Template saved');
+      setSaveTemplateDialog({ open: false, name: '' });
+      refreshNoteTemplates();
+    } catch (err) {
+      console.error('Failed to save treatment note template', err);
+      setSaveTemplateError(err?.response?.data?.message || 'Unable to save template');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   const treatmentOptions = useMemo(
     () => treatments.map((treatment) => ({
       value: treatment.appointment_id,
@@ -221,6 +295,18 @@ const PatientDetails = () => {
     });
     return lookup;
   }, [invoices]);
+
+  const selectedTreatment = useMemo(
+    () => treatments.find(
+      (treatment) => String(treatment.appointment_id) === String(selectedTreatmentId),
+    ),
+    [treatments, selectedTreatmentId],
+  );
+
+  const selectedTemplate = useMemo(
+    () => noteTemplates.find((template) => String(template.id) === String(selectedTemplateId)),
+    [noteTemplates, selectedTemplateId],
+  );
 
   const invoiceStatusOptions = useMemo(
     () =>
@@ -303,6 +389,29 @@ const PatientDetails = () => {
       label: 'Description',
       minWidth: 220,
       render: (row) => row.treatment_description || 'Not provided',
+    },
+    {
+      id: 'treatment_notes',
+      label: 'Treatment Note',
+      minWidth: 260,
+      sortable: false,
+      render: (row) => {
+        if (!row.treatment_notes) {
+          return (
+            <Typography variant="body2" color="text.secondary">
+              No note
+            </Typography>
+          );
+        }
+        const preview = row.treatment_notes.length > 160
+          ? `${row.treatment_notes.slice(0, 160)}...`
+          : row.treatment_notes;
+        return (
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
+            {preview}
+          </Typography>
+        );
+      },
     },
     {
       id: 'price',
@@ -552,6 +661,70 @@ const PatientDetails = () => {
                   </MenuItem>
                 ))}
               </TextField>
+              {canEditNotes && templatesFetchError && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  {templatesFetchError}
+                </Alert>
+              )}
+              {canEditNotes && (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: 1,
+                    mt: 2,
+                  }}
+                >
+                  <TextField
+                    select
+                    label="Template"
+                    value={selectedTemplateId}
+                    onChange={(event) => setSelectedTemplateId(event.target.value)}
+                    sx={{ minWidth: 220 }}
+                    disabled={templatesLoading || noteTemplates.length === 0}
+                    helperText={templatesLoading ? 'Loading templates...' : 'Select to prefill a note'}
+                  >
+                    <MenuItem value="">-- No template --</MenuItem>
+                    {noteTemplates.map((template) => (
+                      <MenuItem key={template.id} value={template.id}>
+                        {template.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <Tooltip title="Apply template" placement="top">
+                    <span>
+                      <IconButton
+                        color="primary"
+                        onClick={handleApplyTemplateToNote}
+                        disabled={!selectedTemplate}
+                      >
+                        <AutoAwesomeIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Save note as template" placement="top">
+                    <span>
+                      <IconButton
+                        color="primary"
+                        onClick={openSaveTemplateDialog}
+                        disabled={!treatmentNote.trim()}
+                      >
+                        <SaveAltIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Manage templates" placement="top">
+                    <IconButton
+                      color="primary"
+                      component={RouterLink}
+                      to="/dashboard/settings#treatment-note-templates"
+                    >
+                      <LibraryBooksIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              )}
               <TextField
                 className={[classes.fullWidth, classes.formRow].join(' ')}
                 label="Treatment Note"
@@ -593,6 +766,31 @@ const PatientDetails = () => {
               Only therapists and administrators can edit treatment notes.
             </Typography>
           )}
+          <Dialog open={saveTemplateDialog.open} onClose={closeSaveTemplateDialog} maxWidth="xs" fullWidth>
+            <DialogTitle>Save Template</DialogTitle>
+            <DialogContent dividers>
+              <TextField
+                label="Template name"
+                fullWidth
+                value={saveTemplateDialog.name}
+                onChange={(event) => setSaveTemplateDialog((prev) => ({ ...prev, name: event.target.value }))}
+                autoFocus
+              />
+              {saveTemplateError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {saveTemplateError}
+                </Alert>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={closeSaveTemplateDialog} disabled={savingTemplate} sx={{ color: '#fff' }}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveTemplateFromNote} disabled={savingTemplate} variant="contained">
+                {savingTemplate ? 'Saving...' : 'Save Template'}
+              </Button>
+            </DialogActions>
+          </Dialog>
         </CardContent>
       </Card>
 
