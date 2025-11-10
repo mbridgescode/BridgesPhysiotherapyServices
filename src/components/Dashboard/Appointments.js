@@ -554,6 +554,45 @@ const Appointments = ({ userData }) => {
     </Box>
   );
 
+  const renderAppointmentCard = (row) => {
+    const eventDate = row.date ? new Date(row.date) : null;
+    return (
+      <Card variant="outlined" sx={{ backgroundColor: 'rgba(15,23,42,0.6)' }}>
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="subtitle1" fontWeight={600}>
+              {row.first_name} {row.surname}
+            </Typography>
+            {row.patient_id && (
+              <Typography variant="caption" color="text.secondary">
+                #{row.patient_id}
+              </Typography>
+            )}
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            {eventDate
+              ? `${eventDate.toLocaleDateString()} · ${eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : 'Date TBC'}
+          </Typography>
+          <Typography variant="body2">
+            {row.treatment_description || 'No Treatment'} · {formatStatusLabel(row.status || row.completion_status)}
+          </Typography>
+          {row.location && (
+            <Typography variant="body2" color="text.secondary">
+              {row.location}
+            </Typography>
+          )}
+          {row.completion_note && (
+            <Typography variant="caption" color="text.secondary">
+              Note: {row.completion_note}
+            </Typography>
+          )}
+          {renderRowActions(row)}
+        </CardContent>
+      </Card>
+    );
+  };
+
   if (canManageAppointments || canUpdateOutcome) {
     appointmentColumns.push({
       id: 'actions',
@@ -888,65 +927,17 @@ const Appointments = ({ userData }) => {
           placeholder="Search by patient name or treatment"
         />
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {isMobile ? (
-            filteredAppointments.length ? (
-              <Box display="flex" flexDirection="column" gap={2}>
-                {filteredAppointments.map((row) => {
-                  const eventDate = row.date ? new Date(row.date) : null;
-                  return (
-                    <Card key={row.appointment_id} variant="outlined" sx={{ backgroundColor: 'rgba(15,23,42,0.6)' }}>
-                      <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                        <Box display="flex" justifyContent="space-between" alignItems="center">
-                          <Typography variant="subtitle1" fontWeight={600}>
-                            {row.first_name} {row.surname}
-                          </Typography>
-                          {row.patient_id && (
-                            <Typography variant="caption" color="text.secondary">
-                              #{row.patient_id}
-                            </Typography>
-                          )}
-                        </Box>
-                        <Typography variant="body2" color="text.secondary">
-                          {eventDate
-                            ? `${eventDate.toLocaleDateString()} · ${eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                            : 'Date TBC'}
-                        </Typography>
-                        <Typography variant="body2">
-                          {row.treatment_description || 'No Treatment'} · {formatStatusLabel(row.status || row.completion_status)}
-                        </Typography>
-                        {row.location && (
-                          <Typography variant="body2" color="text.secondary">
-                            {row.location}
-                          </Typography>
-                        )}
-                        {row.completion_note && (
-                          <Typography variant="caption" color="text.secondary">
-                            Note: {row.completion_note}
-                          </Typography>
-                        )}
-                        {renderRowActions(row)}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </Box>
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                No appointments match your filters.
-              </Typography>
-            )
-          ) : (
-            <DataTable
-              columns={appointmentColumns}
-              rows={filteredAppointments}
-              getRowId={(row) => row.appointment_id}
-              maxHeight="100%"
-              containerSx={{ height: '100%' }}
-              emptyMessage="No appointments match your filters."
-              defaultOrderBy="date"
-              defaultOrder="desc"
-            />
-          )}
+          <DataTable
+            columns={appointmentColumns}
+            rows={filteredAppointments}
+            getRowId={(row) => row.appointment_id}
+            maxHeight="100%"
+            containerSx={{ height: '100%' }}
+            emptyMessage="No appointments match your filters."
+            defaultOrderBy="date"
+            defaultOrder="desc"
+            renderMobileCard={renderAppointmentCard}
+          />
         </Box>
       </CardContent>
 

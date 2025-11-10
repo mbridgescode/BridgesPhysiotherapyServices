@@ -13,7 +13,11 @@ import {
   TableSortLabel,
   TextField,
   Typography,
+  Card,
+  CardContent,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
 
 const defaultGetValue = (row, column) => {
   if (column?.valueGetter) {
@@ -259,7 +263,10 @@ const DataTable = ({
   stickyHeader = true,
   defaultOrderBy,
   defaultOrder = 'asc',
+  renderMobileCard,
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const sortableFallback = useMemo(
     () => columns.find((column) => column.sortable !== false)?.id ?? columns[0]?.id ?? '',
     [columns],
@@ -379,6 +386,67 @@ const DataTable = ({
     }
     return maxHeight;
   })();
+
+  if (isMobile) {
+    if (loading) {
+      return (
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            py: 4,
+            ...containerSx,
+          }}
+        >
+          <CircularProgress size={24} />
+        </Box>
+      );
+    }
+    if (sortedRows.length === 0) {
+      return (
+        <Typography align="center" variant="body2" color="text.secondary" sx={{ py: 3 }}>
+          {emptyMessage}
+        </Typography>
+      );
+    }
+    return (
+      <Box display="flex" flexDirection="column" gap={2} sx={containerSx}>
+        {sortedRows.map((row, index) => {
+          const rowId = getRowId(row, index);
+          if (typeof renderMobileCard === 'function') {
+            return (
+              <React.Fragment key={rowId}>
+                {renderMobileCard(row, { columns, index, rowId })}
+              </React.Fragment>
+            );
+          }
+          return (
+            <Card key={rowId} variant="outlined" sx={{ backgroundColor: 'rgba(15,17,30,0.55)' }}>
+              <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {columns
+                  .filter((column) => column?.id && column.label && column.hideOnMobile !== true)
+                  .map((column) => {
+                    const value = defaultGetValue(row, column);
+                    const cellContent = column.render
+                      ? column.render(row, { value, column })
+                      : formatCellValue(value, column);
+                    return (
+                      <Box key={`${rowId}-${column.id}`}>
+                        <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: '0.05em' }}>
+                          {column.label}
+                        </Typography>
+                        <Box>{cellContent}</Box>
+                      </Box>
+                    );
+                  })}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ position: 'relative', width: '100%' }}>
