@@ -11,20 +11,9 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { fetchPaymentStatus } = require('../utils/payments');
 const { recordAuditEvent } = require('../utils/audit');
 const { buildTokensFromSearchQuery } = require('../utils/patientSecurity');
+const { toPlainObject } = require('../utils/mongoose');
 
 const router = express.Router();
-
-const toPlainObject = (doc) => {
-  if (!doc) {
-    return doc;
-  }
-
-  if (typeof doc.toObject === 'function') {
-    return doc.toObject({ getters: true, virtuals: true });
-  }
-
-  return doc;
-};
 
 const normalizePatientId = (value) => {
   const numeric = Number(value);
@@ -65,12 +54,13 @@ router.get(
       const adultThreshold = new Date(now);
       adultThreshold.setFullYear(now.getFullYear() - 8);
 
-      const archivedPatients = await Patient.find({
+      const archivedPatientDocs = await Patient.find({
         status: 'archived',
         updatedAt: { $lte: adultThreshold },
       })
-        .select('patient_id first_name surname updatedAt date_of_birth status')
-        .lean({ getters: true, virtuals: true });
+        .select('patient_id first_name surname updatedAt date_of_birth status');
+
+      const archivedPatients = archivedPatientDocs.map(toPlainObject);
 
       const eligible = archivedPatients.filter((patient) => {
         const age = calculateAge(patient.date_of_birth, now);
@@ -472,21 +462,28 @@ router.get(
         return res.status(400).json({ success: false, message: 'Invalid patient id' });
       }
 
-      const patient = await Patient.findOne({ patient_id: patientId })
-        .populate('primaryTherapist', 'username email role employeeID')
-        .lean({ getters: true, virtuals: true });
+      const patientDoc = await Patient.findOne({ patient_id: patientId })
+        .populate('primaryTherapist', 'username email role employeeID');
 
-      if (!patient) {
+      if (!patientDoc) {
         return res.status(404).json({ success: false, message: 'Patient not found' });
       }
 
-      const [appointments, notes, invoices, payments, communications] = await Promise.all([
-        Appointment.find({ patient_id: patientId }).sort({ date: -1 }).lean({ getters: true, virtuals: true }),
-        Note.find({ patient_id: patientId }).sort({ date: -1 }).lean({ getters: true, virtuals: true }),
-        Invoice.find({ patient_id: patientId }).sort({ issue_date: -1 }).lean({ getters: true, virtuals: true }),
-        Payment.find({ patient_id: patientId }).sort({ payment_date: -1 }).lean({ getters: true, virtuals: true }),
-        Communication.find({ patient_id: patientId }).sort({ date: -1 }).lean({ getters: true, virtuals: true }),
+      const patient = toPlainObject(patientDoc);
+
+      const [appointmentDocs, noteDocs, invoiceDocs, paymentDocs, communicationDocs] = await Promise.all([
+        Appointment.find({ patient_id: patientId }).sort({ date: -1 }),
+        Note.find({ patient_id: patientId }).sort({ date: -1 }),
+        Invoice.find({ patient_id: patientId }).sort({ issue_date: -1 }),
+        Payment.find({ patient_id: patientId }).sort({ payment_date: -1 }),
+        Communication.find({ patient_id: patientId }).sort({ date: -1 }),
       ]);
+
+      const appointments = toPlainObject(appointmentDocs);
+      const notes = toPlainObject(noteDocs);
+      const invoices = toPlainObject(invoiceDocs);
+      const payments = toPlainObject(paymentDocs);
+      const communications = toPlainObject(communicationDocs);
 
       const exportPayload = {
         generatedAt: new Date().toISOString(),
@@ -529,19 +526,25 @@ router.get(
         return res.status(400).json({ success: false, message: 'Invalid patient id' });
       }
 
-      const patient = await Patient.findOne({ patient_id: patientId })
-        .populate('primaryTherapist', 'username email role employeeID')
-        .lean({ getters: true, virtuals: true });
-      if (!patient) {
+      const patientDoc = await Patient.findOne({ patient_id: patientId })
+        .populate('primaryTherapist', 'username email role employeeID');
+      if (!patientDoc) {
         return res.status(404).json({ success: false, message: 'Patient not found' });
       }
 
-      const [appointments, communications, invoices, notes] = await Promise.all([
-        Appointment.find({ patient_id: patient.patient_id }).sort({ date: -1 }).lean({ getters: true, virtuals: true }),
-        Communication.find({ patient_id: patient.patient_id }).sort({ date: -1 }).lean({ getters: true, virtuals: true }),
-        Invoice.find({ patient_id: patient.patient_id }).sort({ issue_date: -1 }).lean({ getters: true, virtuals: true }),
-        Note.find({ patient_id: patient.patient_id }).sort({ date: -1 }).lean({ getters: true, virtuals: true }),
+      const patient = toPlainObject(patientDoc);
+
+      const [appointmentDocs, communicationDocs, invoiceDocs, noteDocs] = await Promise.all([
+        Appointment.find({ patient_id: patient.patient_id }).sort({ date: -1 }),
+        Communication.find({ patient_id: patient.patient_id }).sort({ date: -1 }),
+        Invoice.find({ patient_id: patient.patient_id }).sort({ issue_date: -1 }),
+        Note.find({ patient_id: patient.patient_id }).sort({ date: -1 }),
       ]);
+
+      const appointments = toPlainObject(appointmentDocs);
+      const communications = toPlainObject(communicationDocs);
+      const invoices = toPlainObject(invoiceDocs);
+      const notes = toPlainObject(noteDocs);
 
       const appointmentsWithStatus = await Promise.all(
         appointments.map(async (appointment) => ({

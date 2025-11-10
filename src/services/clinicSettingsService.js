@@ -1,8 +1,9 @@
 const ClinicSettings = require('../models/clinicSettings');
+const { toPlainObject } = require('../utils/mongoose');
 
 const getLatestClinicSettings = async () => {
-  const settings = await ClinicSettings.findOne().sort({ updatedAt: -1 }).lean();
-  return settings || {};
+  const settingsDoc = await ClinicSettings.findOne().sort({ updatedAt: -1 });
+  return toPlainObject(settingsDoc) || {};
 };
 
 module.exports = {

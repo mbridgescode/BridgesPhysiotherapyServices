@@ -11,6 +11,7 @@ const { recordAuditEvent } = require('../utils/audit');
 const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
 const { buildBookingConfirmationEmail } = require('../templates/email/bookingConfirmationEmail');
+const { toPlainObject } = require('../utils/mongoose');
 
 const router = express.Router();
 
@@ -138,9 +139,9 @@ router.get(
       const query = {};
       applyFilters(query, { employeeID, status, from, to, includeCancelled });
 
-      const appointments = await Appointment.find(query)
-        .sort({ date: 1 })
-        .lean({ getters: true, virtuals: true });
+      const appointmentDocs = await Appointment.find(query)
+        .sort({ date: 1 });
+      const appointments = toPlainObject(appointmentDocs);
 
       const appointmentsWithStatus = await Promise.all(
         appointments.map(async (appointment) => ({

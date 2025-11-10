@@ -13,6 +13,7 @@ const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
 const { buildInvoiceDeliveryEmail } = require('../templates/email/invoiceDeliveryEmail');
 const { calculateTotals, refreshInvoiceWithPayments } = require('../utils/invoices');
+const { toPlainObject } = require('../utils/mongoose');
 
 const router = express.Router();
 
@@ -202,13 +203,14 @@ const enrichLineItemsWithPatientAppointmentNumbers = async ({ lineItems, patient
     return items.map((item) => ({ ...item }));
   }
 
-  const patientAppointments = await Appointment.find({
+  const patientAppointmentDocs = await Appointment.find({
     patient_id: patientId,
     status: 'completed',
   })
     .select('appointment_id date')
-    .sort({ date: 1, appointment_id: 1 })
-    .lean({ getters: true, virtuals: true });
+    .sort({ date: 1, appointment_id: 1 });
+
+  const patientAppointments = toPlainObject(patientAppointmentDocs);
 
   if (patientAppointments.length === 0) {
     return items.map((item) => ({ ...item }));
@@ -299,9 +301,9 @@ router.get(
         }
       }
 
-      let invoices = await Invoice.find(query)
-        .sort({ issue_date: -1 })
-        .lean({ getters: true, virtuals: true });
+      const invoiceDocs = await Invoice.find(query)
+        .sort({ issue_date: -1 });
+      let invoices = toPlainObject(invoiceDocs);
 
       if (include === 'payments') {
         const hydrated = await Promise.all(
@@ -316,11 +318,12 @@ router.get(
           .filter((value) => typeof value === 'number' && !Number.isNaN(value)),
       )];
 
-      const patients = patientIds.length
+      const patientDocs = patientIds.length
         ? await Patient.find({ patient_id: { $in: patientIds } })
           .select('patient_id first_name surname preferred_name email phone primary_contact_name primary_contact_email primary_contact_phone')
-          .lean({ getters: true, virtuals: true })
         : [];
+
+      const patients = toPlainObject(patientDocs);
 
       const patientMap = new Map(patients.map((patient) => [patient.patient_id, patient]));
 
@@ -350,7 +353,8 @@ router.get(
       }
       invoice.client_id = invoice.client_id || invoice.patient_id;
 
-      const patient = await Patient.findOne({ patient_id: invoice.patient_id }).lean({ getters: true, virtuals: true });
+      const patientDoc = await Patient.findOne({ patient_id: invoice.patient_id });
+      const patient = toPlainObject(patientDoc);
       const refreshed = await refreshInvoiceWithPayments(invoice);
       res.json({
         success: true,
@@ -582,7 +586,8 @@ router.put(
       if (!invoice) {
         return res.status(404).json({ success: false, message: 'Invoice not found' });
       }
-      const patient = await Patient.findOne({ patient_id: invoice.patient_id }).lean({ getters: true, virtuals: true });
+      const patientDoc = await Patient.findOne({ patient_id: invoice.patient_id });
+      const patient = toPlainObject(patientDoc);
 
       const lineItems = req.body.line_items
         ? normalizeLineItems(req.body.line_items)
@@ -802,7 +807,8 @@ router.post(
         return res.status(404).json({ success: false, message: 'Invoice not found' });
       }
 
-      const patient = await Patient.findOne({ patient_id: invoice.patient_id }).lean({ getters: true, virtuals: true });
+      const patientDoc = await Patient.findOne({ patient_id: invoice.patient_id });
+      const patient = toPlainObject(patientDoc);
       if (!patient) {
         return res.status(404).json({ success: false, message: 'Patient not found' });
       }
@@ -879,7 +885,8 @@ router.patch(
         return res.status(404).json({ success: false, message: 'Invoice not found' });
       }
 
-      const patient = await Patient.findOne({ patient_id: invoice.patient_id }).lean({ getters: true, virtuals: true });
+      const patientDoc = await Patient.findOne({ patient_id: invoice.patient_id });
+      const patient = toPlainObject(patientDoc);
 
       await Invoice.deleteOne({ _id: invoice._id });
 

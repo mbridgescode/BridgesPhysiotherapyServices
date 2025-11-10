@@ -1,4 +1,5 @@
 const Payment = require('../models/payments');
+const { toPlainObject } = require('./mongoose');
 
 const calculateTotals = ({ lineItems = [], discount }) => {
   let subtotal = 0;
@@ -44,12 +45,14 @@ const calculateTotals = ({ lineItems = [], discount }) => {
 };
 
 const refreshInvoiceWithPayments = async (invoice) => {
-  const payments = await Payment.find({
+  const paymentDocs = await Payment.find({
     $or: [
       { invoice_number: invoice.invoice_number },
       { invoice_id: invoice.invoice_id },
     ],
-  }).lean({ getters: true, virtuals: true });
+  });
+
+  const payments = toPlainObject(paymentDocs);
 
   const totalPaid = payments.reduce((sum, payment) => sum + payment.amount_paid, 0);
   invoice.total_paid = totalPaid;

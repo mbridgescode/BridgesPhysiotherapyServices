@@ -1,5 +1,6 @@
 const Invoice = require('../models/invoices');
 const Payment = require('../models/payments');
+const { toPlainObject } = require('./mongoose');
 
 const fetchPaymentStatus = async (appointmentId, amountOwed) => {
   try {
@@ -7,15 +8,18 @@ const fetchPaymentStatus = async (appointmentId, amountOwed) => {
       ? appointmentId
       : Number(appointmentId);
 
-    const [invoice, payments] = await Promise.all([
+    const [invoiceDoc, paymentDocs] = await Promise.all([
       Invoice.findOne({
         $or: [
           { appointment_id: normalizedId },
           { appointment_ids: normalizedId },
         ],
-      }).lean({ getters: true, virtuals: true }),
-      Payment.find({ appointment_id: normalizedId }).lean({ getters: true, virtuals: true }),
+      }),
+      Payment.find({ appointment_id: normalizedId }),
     ]);
+
+    const invoice = toPlainObject(invoiceDoc);
+    const payments = toPlainObject(paymentDocs);
 
     const totalPaidFromPayments = payments.reduce(
       (sum, payment) => sum + payment.amount_paid,

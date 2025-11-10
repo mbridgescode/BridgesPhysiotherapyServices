@@ -1,6 +1,7 @@
 const express = require('express');
 const DataSubjectRequest = require('../models/dataSubjectRequest');
 const Counter = require('../models/counter');
+const { toPlainObject } = require('../utils/mongoose');
 const { authenticate, authorize } = require('../middleware/auth');
 const { recordAuditEvent } = require('../utils/audit');
 
@@ -34,9 +35,9 @@ router.get(
         query.status = status;
       }
 
-      const requests = await DataSubjectRequest.find(query)
-        .sort({ dueAt: 1 })
-        .lean({ getters: true, virtuals: true });
+      const requestDocs = await DataSubjectRequest.find(query)
+        .sort({ dueAt: 1 });
+      const requests = toPlainObject(requestDocs);
 
       res.json({
         success: true,
