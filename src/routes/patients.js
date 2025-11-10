@@ -15,6 +15,8 @@ const { toPlainObject } = require('../utils/mongoose');
 
 const router = express.Router();
 
+const serializePatient = (doc) => (doc ? toPlainObject(doc) : null);
+
 const normalizePatientId = (value) => {
   const numeric = Number(value);
   return Number.isNaN(numeric) ? null : numeric;
@@ -226,6 +228,7 @@ router.post(
       }
 
       const patient = await Patient.create(payload);
+      const responsePatient = serializePatient(patient);
 
       await recordAuditEvent({
         event: 'patient.create',
@@ -238,7 +241,7 @@ router.post(
 
       res.status(201).json({
         success: true,
-        patient,
+        patient: responsePatient,
       });
     } catch (error) {
       return next(error);
@@ -311,7 +314,7 @@ router.put(
       patient.updatedBy = req.user.id;
       await patient.save();
 
-      const sanitizedPatient = patient.toObject({ getters: true, virtuals: true });
+      const sanitizedPatient = serializePatient(patient);
 
       await recordAuditEvent({
         event: 'patient.update',
@@ -358,7 +361,7 @@ router.delete(
         metadata: { patient_id: patientId.toString() },
       });
 
-      return res.json({ success: true, patient });
+      return res.json({ success: true, patient: serializePatient(patient) });
     } catch (error) {
       return next(error);
     }
@@ -443,7 +446,7 @@ router.post(
 
       res.json({
         success: true,
-        patient: patient.toObject({ getters: true, virtuals: true }),
+        patient: serializePatient(patient),
       });
     } catch (error) {
       return next(error);
