@@ -317,17 +317,35 @@ const Invoices = () => {
 
     try {
       const response = await apiClient.get(endpoint, {
-        responseType: 'blob',
+        responseType: 'arraybuffer',
       });
-      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const contentType = response.headers?.['content-type'] || 'application/pdf';
+      const disposition = response.headers?.['content-disposition'] || '';
+      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      const asciiMatch = disposition.match(/filename="?([^";]+)"?/i);
+      const decodeFileName = (value) => {
+        try {
+          return decodeURIComponent(value);
+        } catch (error) {
+          return value;
+        }
+      };
+      const filename = (utf8Match && decodeFileName(utf8Match[1]))
+        || (asciiMatch && asciiMatch[1])
+        || `${invoice.invoice_number}.pdf`;
+      const blob = new Blob([response.data], { type: contentType });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${invoice.invoice_number}.pdf`;
+      link.download = filename;
+      link.rel = 'noopener';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      window.setTimeout(() => {
+        // Delay revocation slightly so Safari/iOS finish downloading the blob.
+        window.URL.revokeObjectURL(url);
+      }, 500);
     } catch (err) {
       console.error('Failed to download invoice PDF', err);
       setError('Failed to download invoice PDF');
