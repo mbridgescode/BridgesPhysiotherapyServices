@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
@@ -15,13 +16,54 @@ try {
 } catch (error) {
   localChromeExecutablePath = null;
 }
-const { invoiceStoragePath } = require('../config/env');
+const { invoiceStoragePath, pdfTempPath } = require('../config/env');
 const { renderInvoiceTemplate } = require('../templates/invoiceTemplate');
 
 const ensureDirectory = (dirPath) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
+  if (!dirPath) {
+    return null;
   }
+  try {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    fs.accessSync(dirPath, fs.constants.W_OK);
+    return dirPath;
+  } catch (error) {
+    console.warn(`[pdfService] Unable to use directory "${dirPath}": ${error.message}`);
+    return null;
+  }
+};
+
+let resolvedPersistDirectory = null;
+let persistDirectoryResolved = false;
+
+const resolvePersistDirectory = () => {
+  if (persistDirectoryResolved) {
+    return resolvedPersistDirectory;
+  }
+
+  const fallbackDirectories = Array.from(new Set(
+    [
+      invoiceStoragePath,
+      pdfTempPath,
+      path.join(os.tmpdir(), 'bridges-physio-invoices'),
+    ].filter(Boolean),
+  ));
+
+  for (const candidate of fallbackDirectories) {
+    const resolved = ensureDirectory(candidate);
+    if (resolved) {
+      resolvedPersistDirectory = resolved;
+      persistDirectoryResolved = true;
+      return resolvedPersistDirectory;
+    }
+  }
+
+  persistDirectoryResolved = true;
+  resolvedPersistDirectory = null;
+  console.warn('[pdfService] Warning: no writable directory available for invoice PDFs; falling back to in-memory buffers only.');
+  return null;
 };
 
 const isServerlessEnvironment = Boolean(
@@ -98,10 +140,7 @@ const getBrowser = async () => {
 };
 
 const generateInvoicePdf = async ({ invoice, clinicSettings }) => {
-  const persistDirectory = invoiceStoragePath;
-  if (persistDirectory) {
-    ensureDirectory(persistDirectory);
-  }
+  const persistDirectory = resolvePersistDirectory();
 
   const filename = `${invoice.invoice_number}.pdf`;
   const targetPath = persistDirectory ? path.join(persistDirectory, filename) : null;
