@@ -2,18 +2,30 @@ const fs = require('fs');
 const path = require('path');
 const { Buffer } = require('buffer');
 
-const loadFontDataUri = (modulePath) => {
-  try {
-    const resolvedPath = require.resolve(modulePath);
-    const fontBuffer = fs.readFileSync(resolvedPath);
-    return `data:font/woff2;base64,${fontBuffer.toString('base64')}`;
-  } catch (error) {
-    return null;
+const loadFontDataUri = (...candidates) => {
+  for (const candidate of candidates) {
+    try {
+      const resolvedPath = path.isAbsolute(candidate)
+        ? candidate
+        : require.resolve(candidate);
+      const fontBuffer = fs.readFileSync(resolvedPath);
+      return `data:font/woff2;base64,${fontBuffer.toString('base64')}`;
+    } catch (error) {
+      // eslint-disable-next-line no-continue
+      continue;
+    }
   }
+  return null;
 };
 
-const INTER_REGULAR_FONT = loadFontDataUri('@fontsource/inter/files/inter-latin-400-normal.woff2');
-const INTER_SEMIBOLD_FONT = loadFontDataUri('@fontsource/inter/files/inter-latin-600-normal.woff2');
+const INTER_REGULAR_FONT = loadFontDataUri(
+  path.resolve(__dirname, 'fonts/inter-400.woff2'),
+  '@fontsource/inter/files/inter-latin-400-normal.woff2',
+);
+const INTER_SEMIBOLD_FONT = loadFontDataUri(
+  path.resolve(__dirname, 'fonts/inter-600.woff2'),
+  '@fontsource/inter/files/inter-latin-600-normal.woff2',
+);
 
 const buildFontFaceCss = () => {
   const blocks = [];
