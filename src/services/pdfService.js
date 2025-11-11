@@ -6,6 +6,17 @@ const PDFDocument = require('pdfkit');
 const { invoiceStoragePath, pdfTempPath } = require('../config/env');
 const { renderInvoiceTemplate } = require('../templates/invoiceTemplate');
 
+const COLORS = {
+  primary: '#5c6ac4',
+  primaryText: '#ffffff',
+  slate: '#475569',
+  text: '#1b2134',
+  muted: '#94a3b8',
+  border: '#e2e8f0',
+  background: '#f1f5f9',
+  footerBackground: '#e2e8f0',
+};
+
 const ensureDirectory = (dirPath) => {
   if (!dirPath) {
     return null;
@@ -199,11 +210,15 @@ const buildLineItemRows = (invoice, currency) => {
     return [{
       index: '1.',
       description: 'Consultation',
-      unitPrice: formatCurrency(fallbackTotal, currency),
-      quantity: '1',
-      taxRate: '0%',
-      discount: '-',
-      amount: formatCurrency(fallbackTotal, currency),
+      unitPriceDisplay: formatCurrency(fallbackTotal, currency),
+      quantityDisplay: '1',
+      taxRateDisplay: '0%',
+      discountDisplay: '-',
+      subtotalDisplay: formatCurrency(fallbackTotal, currency),
+      totalDisplay: formatCurrency(fallbackTotal, currency),
+      netAmount: fallbackTotal,
+      taxAmount: 0,
+      grossAmount: fallbackTotal,
     }];
   }
 
@@ -216,8 +231,9 @@ const buildLineItemRows = (invoice, currency) => {
     const discountAmount = Number.isNaN(discountAmountRaw)
       ? 0
       : Math.min(Math.max(discountAmountRaw, 0), baseAmount);
-    const total = Number(item.total ?? (baseAmount - discountAmount));
-    const resolvedTotal = Number.isNaN(total) ? baseAmount - discountAmount : total;
+    const netAmount = Math.max(baseAmount - discountAmount, 0);
+    const taxAmount = netAmount * (taxRate / 100);
+    const grossAmount = netAmount + taxAmount;
     const discountDisplay = discountAmount > 0
       ? `-${formatCurrency(discountAmount, currency)}`
       : '-';
@@ -230,11 +246,15 @@ const buildLineItemRows = (invoice, currency) => {
     return {
       index: `${index + 1}.`,
       description: descriptionParts.join('\n'),
-      unitPrice: formatCurrency(unitPrice, currency),
-      quantity: quantity.toString(),
-      taxRate: `${taxRate}%`,
-      discount: discountDisplay,
-      amount: formatCurrency(resolvedTotal, currency),
+      unitPriceDisplay: formatCurrency(unitPrice, currency),
+      quantityDisplay: quantity.toString(),
+      taxRateDisplay: `${taxRate}%`,
+      discountDisplay,
+      subtotalDisplay: formatCurrency(netAmount, currency),
+      totalDisplay: formatCurrency(grossAmount, currency),
+      netAmount,
+      taxAmount,
+      grossAmount,
     };
   });
 };
@@ -254,12 +274,21 @@ const renderFooter = (doc, branding) => {
   const email = branding?.email || 'm.bridgespt@gmail.com';
   const phone = branding?.phone || '074 5528 5117';
   const footerText = [clinicName, email, phone].filter(Boolean).join(' | ');
-  const footerWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const footerY = doc.page.height - doc.page.margins.bottom + 10;
+  const footerHeight = 36;
+  const footerY = doc.page.height - footerHeight;
 
   doc.save();
-  doc.font('Helvetica').fontSize(9).fillColor('#94a3b8');
-  doc.text(footerText, doc.page.margins.left, footerY - 20, { width: footerWidth, align: 'center' });
+  doc.rect(0, footerY, doc.page.width, footerHeight).fill(COLORS.footerBackground);
+  doc.fillColor(COLORS.slate).font('Helvetica').fontSize(9);
+  doc.text(
+    footerText,
+    doc.page.margins.left,
+    footerY + 10,
+    {
+      width: doc.page.width - (doc.page.margins.left + doc.page.margins.right),
+      align: 'center',
+    },
+  );
   doc.restore();
 };
 
@@ -267,167 +296,157 @@ const drawHeader = (doc, {
   branding,
   invoice,
   currency,
-  totals,
   amountDue,
   logoBuffer,
 }) => {
   const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const leftColumnWidth = contentWidth * 0.5 - 10;
-  const rightColumnWidth = contentWidth * 0.5 - 10;
-  const rightColumnX = doc.page.margins.left + leftColumnWidth + 20;
+  const metaWidth = 220;
+  const metaX = doc.page.margins.left + contentWidth - metaWidth;
   const topY = doc.y;
 
   if (logoBuffer) {
-    doc.image(logoBuffer, doc.page.margins.left, topY, { fit: [leftColumnWidth, 80], align: 'left' });
+    doc.image(logoBuffer, doc.page.margins.left, topY, { fit: [180, 60], align: 'left' });
+  } else {
+    doc.font('Helvetica-Bold').fontSize(20).fillColor(COLORS.primary);
+    doc.text(branding?.clinic_name || 'Bridges Physiotherapy Services', doc.page.margins.left, topY);
   }
 
+  doc.font('Helvetica-Bold').fontSize(24).fillColor(COLORS.primary);
+  doc.text('Invoice', metaX, topY, { width: metaWidth, align: 'right' });
+  doc.font('Helvetica').fontSize(9).fillColor(COLORS.slate);
+  doc.text(formatDate(invoice?.due_date) || 'Due on receipt', metaX, topY + 26, {
+    width: metaWidth,
+    align: 'right',
+  });
+
+  const cellGap = 12;
+  const tableTop = topY + 42;
+  const cellWidth = (metaWidth - cellGap) / 2;
+  const dividerX = metaX + cellWidth + (cellGap / 2);
+
+  doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted);
+  doc.text('Date', metaX, tableTop, { width: cellWidth, align: 'right' });
+  doc.text('Invoice #', metaX + cellWidth + cellGap, tableTop, { width: cellWidth, align: 'right' });
+
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.primary);
+  const issueDate = formatDate(invoice?.issue_date || new Date()) || 'N/A';
+  doc.text(issueDate, metaX, tableTop + 12, { width: cellWidth, align: 'right' });
+  doc.text(invoice?.invoice_number || 'N/A', metaX + cellWidth + cellGap, tableTop + 12, {
+    width: cellWidth,
+    align: 'right',
+  });
+
   doc.save();
-  doc.font('Helvetica-Bold').fontSize(12).fillColor('#1b2134');
-  doc.text(branding?.clinic_name || 'Bridges Physiotherapy Services', doc.page.margins.left, topY + 85, {
-    width: leftColumnWidth,
+  doc.strokeColor(COLORS.border).lineWidth(1);
+  doc.moveTo(dividerX, tableTop - 6).lineTo(dividerX, tableTop + 44).stroke();
+  doc.restore();
+
+  const badgeTop = tableTop + 48;
+  doc.save();
+  doc.roundedRect(metaX, badgeTop, metaWidth, 38, 8).fill(COLORS.primary);
+  doc.fillColor('#ffffff').font('Helvetica').fontSize(9);
+  doc.text('Amount Due', metaX + 12, badgeTop + 8, { width: metaWidth - 24, align: 'left' });
+  doc.font('Helvetica-Bold').fontSize(14);
+  doc.text(formatCurrency(amountDue, currency), metaX + 12, badgeTop + 18, {
+    width: metaWidth - 24,
     align: 'left',
   });
-  doc.font('Helvetica').fontSize(9).fillColor('#475569');
-  [
-    branding?.address,
-    branding?.email,
-    branding?.phone,
-    branding?.website,
-  ].filter(Boolean).forEach((line) => {
-    doc.text(line, { width: leftColumnWidth, align: 'left' });
-  });
   doc.restore();
 
-  const metaPairs = [
-    ['Invoice Number', invoice?.invoice_number || 'N/A'],
-    ['Issue Date', formatDate(invoice?.issue_date || new Date()) || 'N/A'],
-    ['Due Date', formatDate(invoice?.due_date) || 'Due on receipt'],
-    ['Amount Due', formatCurrency(amountDue, currency)],
-  ];
+  const headerBottom = badgeTop + 50;
+  doc.y = Math.max(headerBottom, topY + 80);
+  doc.strokeColor(COLORS.border).lineWidth(1);
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
+  doc.moveDown(0.8);
+};
+
+const buildClinicDetails = (branding = {}) => {
+  const lines = [];
+  if (branding.clinic_name) {
+    lines.push(branding.clinic_name);
+  }
+  if (branding.address) {
+    lines.push(branding.address);
+  }
+  if (branding.phone) {
+    lines.push(`Phone: ${branding.phone}`);
+  }
+  if (branding.email) {
+    lines.push(`Email: ${branding.email}`);
+  }
+  if (branding.website) {
+    lines.push(branding.website);
+  }
+  return lines.filter(Boolean);
+};
+
+const buildBillingDetails = (invoice) => {
+  const lines = [];
+  const billingName = invoice?.billing_contact_name || invoice?.patient_name || 'Valued Client';
+  const billingEmail = invoice?.billing_contact_email || invoice?.patient_email;
+  const billingPhone = invoice?.billing_contact_phone || invoice?.patient_phone;
+  const clientId = invoice?.client_id || invoice?.patient_id;
+
+  lines.push(billingName);
+  if (clientId) {
+    lines.push(`Client ID: ${clientId}`);
+  }
+  if (billingEmail) {
+    lines.push(billingEmail);
+  }
+  if (billingPhone) {
+    lines.push(billingPhone);
+  }
+  return lines.filter(Boolean);
+};
+
+const drawPartiesSection = (doc, invoice, branding) => {
+  const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const blockTop = doc.y + 8;
+  const blockHeight = 110;
+  ensurePageSpace(doc, branding, blockHeight + 20);
 
   doc.save();
-  doc.font('Helvetica-Bold').fontSize(18).fillColor('#1f3e82');
-  doc.text('Invoice', rightColumnX, topY, { width: rightColumnWidth, align: 'right' });
-  doc.font('Helvetica').fontSize(10).fillColor('#1b2134');
-  metaPairs.forEach(([label, value]) => {
-    const lineY = doc.y + 8;
-    doc.font('Helvetica').fontSize(9).fillColor('#475569');
-    doc.text(label, rightColumnX, lineY, { width: rightColumnWidth * 0.55, align: 'left' });
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#1b2134');
-    doc.text(value, rightColumnX + (rightColumnWidth * 0.55) + 8, lineY, {
-      width: rightColumnWidth * 0.35,
-      align: 'right',
-    });
-    doc.moveDown(0.2);
-  });
+  doc.roundedRect(doc.page.margins.left, blockTop, contentWidth, blockHeight, 12).fill(COLORS.background);
   doc.restore();
 
-  doc.moveDown(1.5);
-  doc.strokeColor('#e2e8f0').lineWidth(1);
-  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
-  doc.moveDown(0.8);
-};
+  const columnWidth = (contentWidth / 2) - 20;
+  const leftX = doc.page.margins.left + 16;
+  const rightX = doc.page.margins.left + contentWidth / 2 + 16;
+  let leftY = blockTop + 16;
+  let rightY = blockTop + 16;
 
-const drawBillToSection = (doc, invoice, branding) => {
-  const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const leftColumnWidth = contentWidth * 0.5 - 10;
-  const rightColumnX = doc.page.margins.left + leftColumnWidth + 20;
-  const sectionTop = doc.y;
-
-  const billingName = invoice?.billing_contact_name || invoice?.patient_name || 'Valued Client';
-  const billingEmail = invoice?.billing_contact_email || invoice?.patient_email || '';
-  const billingPhone = invoice?.billing_contact_phone || invoice?.patient_phone || '';
-
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#1b2134');
-  doc.text('Bill To', doc.page.margins.left, sectionTop);
-  let leftCursor = doc.y;
-  doc.font('Helvetica').fontSize(10).fillColor('#334155');
-  [billingName, billingEmail, billingPhone].filter(Boolean).forEach((line) => {
-    doc.text(line, doc.page.margins.left, leftCursor, {
-      width: leftColumnWidth,
-      align: 'left',
-    });
-    leftCursor = doc.y;
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.primary);
+  doc.text('From', leftX, leftY);
+  leftY = doc.y + 2;
+  doc.font('Helvetica').fontSize(10).fillColor(COLORS.slate);
+  buildClinicDetails(branding).forEach((line) => {
+    doc.text(line, leftX, leftY, { width: columnWidth, align: 'left' });
+    leftY = doc.y + 2;
   });
 
-  const detailPairs = [
-    ['Client ID', invoice?.client_id || invoice?.patient_id || 'N/A'],
-    ['Invoice ID', invoice?.invoice_id || 'N/A'],
-    ['Status', (invoice?.status || 'draft').replace(/_/g, ' ')],
-  ];
-
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#1b2134');
-  doc.text('Details', rightColumnX, sectionTop);
-  let rightCursor = doc.y;
-  detailPairs.forEach(([label, value]) => {
-    doc.font('Helvetica').fontSize(9).fillColor('#475569');
-    doc.text(label, rightColumnX, rightCursor, { width: 90, align: 'left' });
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#1b2134');
-    doc.text(value, rightColumnX + 95, rightCursor, {
-      width: contentWidth - leftColumnWidth - 95,
-      align: 'left',
-    });
-    rightCursor = Math.max(rightCursor + 14, doc.y);
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.primary);
+  doc.text('Bill To', rightX, rightY);
+  rightY = doc.y + 2;
+  doc.font('Helvetica').fontSize(10).fillColor(COLORS.slate);
+  buildBillingDetails(invoice).forEach((line) => {
+    doc.text(line, rightX, rightY, { width: columnWidth, align: 'left' });
+    rightY = doc.y + 2;
   });
 
-  doc.y = Math.max(leftCursor, rightCursor) + 8;
-
-  if (invoice?.notes) {
-    ensurePageSpace(doc, branding, 40);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#1b2134');
-    doc.text('Invoice Notes', doc.page.margins.left, doc.y);
-    doc.font('Helvetica').fontSize(10).fillColor('#334155');
-    doc.text(invoice.notes, {
-      width: contentWidth,
-      align: 'left',
-    });
-    doc.moveDown(0.6);
-  }
-
-  doc.strokeColor('#e2e8f0').lineWidth(1);
-  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
-  doc.moveDown(0.8);
-};
-
-const drawTotalsSummary = (doc, totals, currency, branding) => {
-  const entries = [
-    ['Subtotal', totals.net ?? 0],
-    ['Tax', totals.tax ?? 0],
-    ['Discounts', totals.discount ?? 0],
-    ['Total', totals.gross ?? 0],
-    ['Paid', totals.paid ?? 0],
-    ['Balance Due', totals.balance ?? 0],
-  ];
-  ensurePageSpace(doc, branding, (entries.length * 14) + 20);
-  const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const startX = doc.page.margins.left + contentWidth - 220;
-  const labelWidth = 110;
-  const valueWidth = 100;
-
-  entries.forEach(([label, value], index) => {
-    const lineY = doc.y;
-    const isEmphasis = index >= entries.length - 2;
-    doc.font(isEmphasis ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor('#475569');
-    doc.text(label, startX, lineY, { width: labelWidth, align: 'right' });
-    doc.font(isEmphasis ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor('#1b2134');
-    doc.text(formatCurrency(value, currency), startX + labelWidth + 10, lineY, {
-      width: valueWidth,
-      align: 'right',
-    });
-    doc.y = lineY + 14;
-  });
-  doc.moveDown(0.5);
+  doc.y = blockTop + blockHeight + 16;
 };
 
 const drawLineItemsTable = (doc, lineItems, currency, branding) => {
   const columns = [
     { key: 'index', label: '#', width: 25, align: 'left' },
-    { key: 'description', label: 'Description', width: 210, align: 'left' },
-    { key: 'unitPrice', label: 'Unit Price', width: 60, align: 'right' },
-    { key: 'quantity', label: 'Qty', width: 35, align: 'center' },
-    { key: 'taxRate', label: 'Tax', width: 45, align: 'right' },
-    { key: 'discount', label: 'Discount', width: 55, align: 'right' },
-    { key: 'amount', label: 'Amount', width: 65, align: 'right' },
+    { key: 'description', label: 'Product details', width: 170, align: 'left' },
+    { key: 'unitPriceDisplay', label: 'Price', width: 55, align: 'right' },
+    { key: 'quantityDisplay', label: 'Qty.', width: 35, align: 'center' },
+    { key: 'taxRateDisplay', label: 'VAT', width: 40, align: 'right' },
+    { key: 'discountDisplay', label: 'Discount', width: 55, align: 'right' },
+    { key: 'subtotalDisplay', label: 'Subtotal', width: 60, align: 'right' },
+    { key: 'totalDisplay', label: 'Subtotal + VAT', width: 70, align: 'right' },
   ];
   const tableWidth = columns.reduce((sum, col) => sum + col.width, 0) + 20;
   const startX = doc.page.margins.left;
@@ -435,8 +454,8 @@ const drawLineItemsTable = (doc, lineItems, currency, branding) => {
   const renderHeader = () => {
     const headerY = doc.y;
     doc.save();
-    doc.roundedRect(startX, headerY, tableWidth, 24, 6).fill('#f8fafc');
-    doc.fillColor('#1b2134').font('Helvetica-Bold').fontSize(9);
+    doc.roundedRect(startX, headerY, tableWidth, 26, 8).fill('#f8fafc');
+    doc.fillColor(COLORS.primary).font('Helvetica-Bold').fontSize(9);
     let columnX = startX + 10;
     columns.forEach((col) => {
       doc.text(col.label, columnX, headerY + 7, { width: col.width, align: col.align });
@@ -449,7 +468,7 @@ const drawLineItemsTable = (doc, lineItems, currency, branding) => {
   ensurePageSpace(doc, branding, 60);
   renderHeader();
 
-  doc.font('Helvetica').fontSize(9).fillColor('#1b2134');
+  doc.font('Helvetica').fontSize(9).fillColor(COLORS.text);
 
   lineItems.forEach((row, rowIndex) => {
     const heights = columns.map((col) => doc.heightOfString(row[col.key], {
@@ -462,7 +481,7 @@ const drawLineItemsTable = (doc, lineItems, currency, branding) => {
       renderHeader();
     }
     const rowTop = doc.y;
-    doc.strokeColor('#e2e8f0').lineWidth(0.5);
+    doc.strokeColor(COLORS.border).lineWidth(0.5);
     doc.moveTo(startX, rowTop).lineTo(startX + tableWidth, rowTop).stroke();
     let dataX = startX + 10;
     columns.forEach((col) => {
@@ -478,27 +497,81 @@ const drawLineItemsTable = (doc, lineItems, currency, branding) => {
   doc.moveDown(1.2);
 };
 
+const drawTotalsSummary = (doc, totals, currency, branding) => {
+  const entries = [
+    { label: 'Net total', value: totals.net ?? 0 },
+    { label: 'VAT total', value: totals.tax ?? 0 },
+    { label: 'Discounts', value: totals.discount ?? 0 },
+    { label: 'Total', value: totals.gross ?? 0, emphasis: 'primary' },
+    { label: 'Paid', value: totals.paid ?? 0 },
+    { label: 'Balance Due', value: totals.balance ?? 0, emphasis: 'outline' },
+  ];
+
+  const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const boxWidth = 240;
+  const startX = doc.page.margins.left + contentWidth - boxWidth;
+  const rowHeight = 28;
+  ensurePageSpace(doc, branding, entries.length * rowHeight + 16);
+
+  entries.forEach((entry) => {
+    const rowY = doc.y;
+    doc.save();
+    if (entry.emphasis === 'primary') {
+      doc.roundedRect(startX, rowY, boxWidth, rowHeight, 6).fill(COLORS.primary);
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10);
+    } else if (entry.emphasis === 'outline') {
+      doc.roundedRect(startX, rowY, boxWidth, rowHeight, 6).strokeColor(COLORS.primary).lineWidth(1).stroke();
+      doc.fillColor(COLORS.primary).font('Helvetica-Bold').fontSize(10);
+    } else {
+      doc.roundedRect(startX, rowY, boxWidth, rowHeight, 6).fill('#ffffff').strokeColor(COLORS.border).lineWidth(0.5).stroke();
+      doc.fillColor(COLORS.slate).font('Helvetica').fontSize(10);
+    }
+    doc.text(entry.label, startX + 12, rowY + 8, { width: boxWidth - 120, align: 'left' });
+    doc.text(formatCurrency(entry.value, currency), startX + 120, rowY + 8, {
+      width: boxWidth - 132,
+      align: 'right',
+    });
+    doc.restore();
+    doc.y = rowY + rowHeight + 6;
+  });
+};
+
 const drawPaymentSection = (doc, clinicSettings, invoice, branding) => {
   const lines = buildPaymentInstructionLines(clinicSettings, invoice);
+  const reference = invoice?.invoice_number ? `Payment Reference: ${invoice.invoice_number}` : null;
+  if (reference) {
+    lines.push(reference);
+  }
   if (!lines.length) {
     return;
   }
   ensurePageSpace(doc, branding, 80);
   const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const text = lines.join('\n');
-  const textWidth = contentWidth - 24;
-  const boxHeight = doc.heightOfString(text, { width: textWidth }) + 24;
-  const boxTop = doc.y;
-  doc.save();
-  doc.roundedRect(doc.page.margins.left, boxTop, contentWidth, boxHeight, 10).fill('#eff6ff');
-  doc.fillColor('#1b2134').font('Helvetica-Bold').fontSize(11);
-  doc.text('Payment details', doc.page.margins.left + 12, boxTop + 12, {
-    width: textWidth,
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.primary);
+  doc.text('PAYMENT DETAILS', doc.page.margins.left, doc.y);
+  doc.moveDown(0.4);
+  doc.font('Helvetica').fontSize(10).fillColor(COLORS.slate);
+  doc.text(lines.join('\n'), {
+    width: contentWidth,
+    align: 'left',
   });
-  doc.font('Helvetica').fontSize(10).fillColor('#1b2134');
-  doc.text(text, doc.page.margins.left + 12, boxTop + 32, { width: textWidth });
-  doc.restore();
-  doc.y = boxTop + boxHeight + 16;
+  doc.moveDown(0.8);
+};
+
+const drawNotesSection = (doc, invoice, branding) => {
+  const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const rawNotes = invoice?.notes ? stripHtml(invoice.notes) : '';
+  const notesText = rawNotes || 'Thank you for choosing Bridges Physiotherapy Services.';
+  ensurePageSpace(doc, branding, 80);
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.primary);
+  doc.text('Notes', doc.page.margins.left, doc.y);
+  doc.moveDown(0.3);
+  doc.font('Helvetica-Oblique').fontSize(10).fillColor(COLORS.slate);
+  doc.text(notesText, {
+    width: contentWidth,
+    align: 'left',
+  });
+  doc.moveDown(0.5);
 };
 
 const createInvoicePdfBuffer = async ({ invoice, clinicSettings }) => {
@@ -521,14 +594,14 @@ const createInvoicePdfBuffer = async ({ invoice, clinicSettings }) => {
     branding,
     invoice,
     currency,
-    totals,
     amountDue,
     logoBuffer,
   });
-  drawBillToSection(doc, invoice, branding);
+  drawPartiesSection(doc, invoice, branding);
   drawLineItemsTable(doc, lineItems, currency, branding);
   drawTotalsSummary(doc, totals, currency, branding);
   drawPaymentSection(doc, clinicSettings, invoice, branding);
+  drawNotesSection(doc, invoice, branding);
   renderFooter(doc, branding);
   doc.end();
 
