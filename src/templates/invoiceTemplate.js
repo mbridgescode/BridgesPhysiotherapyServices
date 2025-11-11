@@ -2,6 +2,44 @@ const fs = require('fs');
 const path = require('path');
 const { Buffer } = require('buffer');
 
+const loadFontDataUri = (modulePath) => {
+  try {
+    const resolvedPath = require.resolve(modulePath);
+    const fontBuffer = fs.readFileSync(resolvedPath);
+    return `data:font/woff2;base64,${fontBuffer.toString('base64')}`;
+  } catch (error) {
+    return null;
+  }
+};
+
+const INTER_REGULAR_FONT = loadFontDataUri('@fontsource/inter/files/inter-latin-400-normal.woff2');
+const INTER_SEMIBOLD_FONT = loadFontDataUri('@fontsource/inter/files/inter-latin-600-normal.woff2');
+
+const buildFontFaceCss = () => {
+  const blocks = [];
+  if (INTER_REGULAR_FONT) {
+    blocks.push(`@font-face {
+        font-family: 'Inter';
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url('${INTER_REGULAR_FONT}') format('woff2');
+      }`);
+  }
+  if (INTER_SEMIBOLD_FONT) {
+    blocks.push(`@font-face {
+        font-family: 'Inter';
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url('${INTER_SEMIBOLD_FONT}') format('woff2');
+      }`);
+  }
+  return blocks.join('\n');
+};
+
+const FONT_FACE_CSS = buildFontFaceCss();
+
 const formatCurrency = (value = 0, currency = 'GBP') =>
   new Intl.NumberFormat('en-GB', {
     style: 'currency',
@@ -162,6 +200,8 @@ const renderInvoiceTemplate = ({ invoice, clinicSettings }) => {
     <meta charset="utf-8" />
     <title>Invoice ${invoiceNumber}</title>
     <style>
+      ${FONT_FACE_CSS}
+
       @page {
         size: A4;
         margin: 0;
@@ -173,7 +213,7 @@ const renderInvoiceTemplate = ({ invoice, clinicSettings }) => {
       }
 
       body {
-        font-family: 'Segoe UI', Arial, sans-serif;
+        font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
         font-size: 12.5px;
         color: #1b2134;
         margin: 0;
