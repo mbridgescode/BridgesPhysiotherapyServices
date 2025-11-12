@@ -48,6 +48,23 @@ const escapeHtml = (value = '') =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const invoiceHasDiscount = (invoice) => {
+  const lineItems = Array.isArray(invoice?.line_items) ? invoice.line_items : [];
+  const lineDiscountApplied = lineItems.some(
+    (item) => Number(item?.discount_amount || 0) > 0,
+  );
+  if (lineDiscountApplied) {
+    return true;
+  }
+  const aggregateDiscount = Number(
+    invoice?.discount?.amount
+    ?? invoice?.discount_amount
+    ?? invoice?.totals?.discount
+    ?? 0,
+  );
+  return !Number.isNaN(aggregateDiscount) && aggregateDiscount > 0;
+};
+
 const buildTotals = (invoice) => {
   const baseTotals = {
     net: invoice?.subtotal ?? 0,
@@ -63,18 +80,22 @@ const buildTotals = (invoice) => {
   };
 };
 
-const buildLineItems = (invoice, currency) => {
+const buildLineItems = (invoice, currency, options = {}) => {
+  const showDiscountColumn = Boolean(options.showDiscountColumn);
   const lineItems = Array.isArray(invoice?.line_items) ? invoice.line_items : [];
 
   if (lineItems.length === 0) {
     const fallbackTotal = invoice?.totals?.gross ?? invoice?.total_due ?? 0;
+    const discountCell = showDiscountColumn
+      ? `<td class="cell number discount"><span class="muted">&mdash;</span></td>`
+      : '';
     return `
       <tr>
         <td class="cell index">1.</td>
         <td class="cell description">Consultation</td>
         <td class="cell number">${formatCurrency(fallbackTotal, currency)}</td>
         <td class="cell number">1</td>
-        <td class="cell number discount"><span class="muted">&mdash;</span></td>
+        ${discountCell}
         <td class="cell number">${formatCurrency(fallbackTotal, currency)}</td>
       </tr>`;
   }
@@ -113,6 +134,9 @@ const buildLineItems = (invoice, currency) => {
       const metaBlock = metaLines.length
         ? `<div class="meta">${metaLines.map((line) => escapeHtml(line)).join('<br />')}</div>`
         : '';
+      const discountCell = showDiscountColumn
+        ? `<td class="cell number discount">${discountDisplay}</td>`
+        : '';
 
       return `
         <tr>
@@ -123,7 +147,7 @@ const buildLineItems = (invoice, currency) => {
           </td>
           <td class="cell number">${formatCurrency(unitPrice, currency)}</td>
           <td class="cell number">${quantity}</td>
-          <td class="cell number discount">${discountDisplay}</td>
+          ${discountCell}
           <td class="cell number">${formatCurrency(resolvedTotal, currency)}</td>
         </tr>`;
     })
@@ -310,6 +334,12 @@ const renderInvoiceTemplate = ({
           </div>
         </section>`
     : '';
+  const showDiscountColumn = invoiceHasDiscount(invoice);
+  const lineItemsHtml = buildLineItems(invoice, currency, { showDiscountColumn });
+  const discountHeaderCell = showDiscountColumn
+    ? "<th style='text-align:right;'>Discount</th>"
+    : '';
+  const amountDueLabelColspan = showDiscountColumn ? 5 : 4;
 
   const styles = `
       @page {
@@ -652,14 +682,14 @@ const renderInvoiceTemplate = ({
                 <th>Product details</th>
                 <th style='text-align:right;'>Price</th>
                 <th style='text-align:center;'>Qty.</th>
-                <th style='text-align:right;'>Discount</th>
+                ${discountHeaderCell}
                 <th style='text-align:right;'>Amount</th>
               </tr>
             </thead>
             <tbody>
-              ${buildLineItems(invoice, currency)}
+              ${lineItemsHtml}
               <tr class='line-total'>
-                <td colspan='5' class='cell total-label'>
+                <td colspan='${amountDueLabelColspan}' class='cell total-label'>
                   Amount Due <span>${dueText}</span>
                 </td>
                 <td class='cell number total-value'>${formatCurrency(amountDue, currency)}</td>
