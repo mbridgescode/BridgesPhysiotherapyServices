@@ -1,5 +1,5 @@
+const { renderEmailTemplate } = require('./baseEmailTemplate');
 const {
-  renderTemplidInvoice,
   normalizePaymentInstructionLines,
   formatCurrency,
   formatLongDate,
@@ -7,6 +7,14 @@ const {
 
 const DEFAULT_CANCELLATION_POLICY_URL =
   process.env.CANCELLATION_POLICY_URL || 'https://www.bridgesphysiotherapy.co.uk/cancellation-charges';
+
+const escapeHtml = (value = '') =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 const buildFooterLines = (branding = {}) => {
   const lines = [];
@@ -55,6 +63,9 @@ const buildPlainTextEmail = ({
     lines.push(...filteredNotes, '');
   }
 
+  lines.push('A PDF copy of this invoice is attached.');
+  lines.push('');
+
   lines.push('Payment instructions:');
   if (filteredPayments.length) {
     lines.push(...filteredPayments);
@@ -65,6 +76,84 @@ const buildPlainTextEmail = ({
   }
 
   return lines.join('\n');
+};
+
+const resolvePatientName = (patient = {}, invoice = {}, billingContact = {}) => {
+  const parts = [patient.first_name, patient.surname].filter(Boolean);
+  if (parts.length) {
+    return parts.join(' ');
+  }
+  if (patient.preferred_name) {
+    return patient.preferred_name;
+  }
+  if (invoice.patient_name) {
+    return invoice.patient_name;
+  }
+  return billingContact.name || 'Valued Client';
+};
+
+const buildInvoiceSummaryHtml = ({
+  invoice,
+  highlightValue,
+  dueDateText,
+  patientName,
+}) => {
+  const issueDate = formatFriendlyDate(invoice.issue_date) || 'Issued today';
+  return `
+    <div style="margin:18px 0;padding:18px 22px;border:1px solid rgba(148,163,184,0.4);border-radius:18px;background:rgba(99,102,241,0.04);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;">
+        <div>
+          <div style="text-transform:uppercase;letter-spacing:0.08em;font-size:12px;color:#475569;">Amount due</div>
+          <div style="font-size:28px;font-weight:700;color:#0f172a;">${highlightValue}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:15px;font-weight:600;color:#0f172a;">${escapeHtml(dueDateText)}</div>
+          <div style="color:#64748b;font-size:13px;">Due date</div>
+        </div>
+      </div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;border-collapse:collapse;color:#0f172a;font-size:14px;">
+        <tr>
+          <td style="padding:8px 0;color:#64748b;width:160px;">Invoice number</td>
+          <td style="padding:8px 0;font-weight:600;">${escapeHtml(invoice.invoice_number || 'Pending')}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:#64748b;">Issue date</td>
+          <td style="padding:8px 0;font-weight:600;">${escapeHtml(issueDate)}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:#64748b;">Patient</td>
+          <td style="padding:8px 0;font-weight:600;">${escapeHtml(patientName)}</td>
+        </tr>
+      </table>
+    </div>`;
+};
+
+const buildPaymentInstructionsHtml = (lines = []) => {
+  if (!lines.length) {
+    return '';
+  }
+  const items = lines
+    .map((line) => `<li style="margin-bottom:6px;">${escapeHtml(line)}</li>`)
+    .join('');
+  return `
+    <div style="margin-top:16px;padding:16px 18px;border:1px solid rgba(148,163,184,0.35);border-radius:16px;">
+      <strong style="display:block;margin-bottom:8px;color:#0f172a;">Payment instructions</strong>
+      <ul style="margin:0;padding-left:18px;color:#475569;line-height:1.6;">${items}</ul>
+    </div>`;
+};
+
+const buildNotesHtml = (heading, lines = []) => {
+  const filtered = lines.filter(Boolean);
+  if (!filtered.length) {
+    return '';
+  }
+  return `
+    <div style="margin-top:16px;padding:16px 18px;background:rgba(15,23,42,0.04);border-radius:16px;">
+      <strong style="display:block;margin-bottom:8px;color:#0f172a;">${escapeHtml(heading || 'Notes')}</strong>
+      <div style="color:#475569;line-height:1.6;">
+        ${filtered.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}
+      </div>
+    </div>`;
 };
 
 const buildInvoiceDeliveryEmail = ({
@@ -86,15 +175,27 @@ const buildInvoiceDeliveryEmail = ({
     'If you have already settled this invoice, please ignore this message.',
     'Otherwise, kindly arrange payment at your earliest convenience.',
   ];
+  const patientName = resolvePatientName(patient, invoice, billingContact);
+  const content = `
+    <p style="margin:0 0 18px;color:#0f172a;">Thank you for choosing Bridges Physiotherapy Services. Your invoice is ready and attached as a PDF.</p>
+    ${buildInvoiceSummaryHtml({
+      invoice,
+      highlightValue,
+      dueDateText: dueDate,
+      patientName,
+    })}
+    <p style="margin:0 0 12px;color:#475569;">Please review the attached document at your convenience. A PDF copy has been included for your records.</p>
+    ${buildPaymentInstructionsHtml(paymentLines)}
+    ${buildNotesHtml('Helpful notes', notesLines)}
+  `;
 
-  const html = renderTemplidInvoice({
-    invoice,
-    clinicSettings,
-    billingContact,
-    patient,
-    notesHeading: 'Notes',
-    notesLines,
-    includeWrapper: true,
+  const html = renderEmailTemplate({
+    heading: 'Invoice ready',
+    intro: `Balance due: ${highlightValue}`,
+    content,
+    previewText: `Invoice ${invoice.invoice_number} due ${dueDate}`,
+    footerLines: clinicLines,
+    brand: branding,
   });
 
   const text = buildPlainTextEmail({
@@ -139,14 +240,30 @@ const buildCancellationFeeInvoiceEmail = ({
     `Policy: ${DEFAULT_CANCELLATION_POLICY_URL}`,
   ];
 
-  const html = renderTemplidInvoice({
-    invoice,
-    clinicSettings,
-    billingContact,
-    patient,
-    notesHeading: 'Cancellation notes',
-    notesLines,
-    includeWrapper: true,
+  const patientName = resolvePatientName(patient, invoice, billingContact);
+  const content = `
+    <p style="margin:0 0 18px;color:#0f172a;">
+      A cancellation fee has been applied for ${escapeHtml(treatmentSummary)} on ${escapeHtml(
+        friendlyAppointmentDate,
+      )}. A PDF copy of the invoice is attached.
+    </p>
+    ${buildInvoiceSummaryHtml({
+      invoice,
+      highlightValue,
+      dueDateText: dueDate,
+      patientName,
+    })}
+    ${buildPaymentInstructionsHtml(paymentLines)}
+    ${buildNotesHtml('Cancellation notes', notesLines)}
+  `;
+
+  const html = renderEmailTemplate({
+    heading: 'Cancellation fee invoice',
+    intro: `Balance due: ${highlightValue}`,
+    content,
+    previewText: `Cancellation fee invoice ${invoice.invoice_number}`,
+    footerLines: clinicLines,
+    brand: branding,
   });
 
   const text = buildPlainTextEmail({
