@@ -319,6 +319,32 @@ const Invoices = () => {
       const response = await apiClient.get(endpoint, {
         responseType: 'arraybuffer',
       });
+      const byteView = new Uint8Array(response.data || []);
+      const isPdfSignature = byteView.length >= 4
+        && byteView[0] === 0x25
+        && byteView[1] === 0x50
+        && byteView[2] === 0x44
+        && byteView[3] === 0x46;
+      if (!isPdfSignature) {
+        let decoded;
+        try {
+          decoded = new TextDecoder('utf-8').decode(byteView);
+        } catch (error) {
+          decoded = '';
+        }
+        let errorMessage = 'Unable to download invoice PDF';
+        if (decoded) {
+          try {
+            const parsed = JSON.parse(decoded);
+            errorMessage = parsed?.message || parsed?.error || errorMessage;
+          } catch (parseErr) {
+            errorMessage = decoded;
+          }
+        }
+        console.error('Invoice PDF download returned non-PDF payload', { errorMessage, endpoint });
+        showToast(errorMessage, 'error');
+        return;
+      }
       const contentType = response.headers?.['content-type'] || 'application/pdf';
       const disposition = response.headers?.['content-disposition'] || '';
       const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
