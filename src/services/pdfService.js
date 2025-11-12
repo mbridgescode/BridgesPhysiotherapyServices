@@ -7,13 +7,13 @@ const { invoiceStoragePath, pdfTempPath } = require('../config/env');
 const { renderInvoiceTemplate } = require('../templates/invoiceTemplate');
 
 const COLORS = {
-  background: '#f7f8fb',
-  primary: '#2f3d8a',
+  background: '#f8fafc',
+  primary: '#5c6ac4',
   accent: '#4f63d1',
-  muted: '#6d748c',
-  border: '#e5e7ef',
-  tableHeader: '#f0f1f7',
-  paymentBackground: '#f0f2fb',
+  muted: '#64748b',
+  border: '#e2e8f0',
+  tableHeader: '#eef2ff',
+  paymentBackground: '#f4f6ff',
 };
 
 const DEFAULT_LOGO_PATH = path.resolve(__dirname, '../logo/BPS Logo.png');
@@ -158,21 +158,21 @@ const appendMetaLines = (item) => {
 };
 
 const buildLineItemRows = (invoice, currency) => {
-  const sourceLineItems = Array.isArray(invoice?.line_items) ? invoice.line_items : [];
-  if (sourceLineItems.length === 0) {
+  const source = Array.isArray(invoice?.line_items) ? invoice.line_items : [];
+  if (source.length === 0) {
     const fallbackTotal = invoice?.totals?.gross ?? invoice?.total_due ?? 0;
     return [{
       index: '1.',
       description: 'Consultation',
       descriptionMeta: [],
-      unitPrice: formatCurrency(fallbackTotal, currency),
-      quantity: '1',
-      taxRate: '0%',
-      amount: formatCurrency(fallbackTotal, currency),
+      unitPriceDisplay: formatCurrency(fallbackTotal, currency),
+      quantityDisplay: '1',
+      taxRateDisplay: '0%',
+      amountDisplay: formatCurrency(fallbackTotal, currency),
     }];
   }
 
-  return sourceLineItems.map((item, index) => {
+  return source.map((item, index) => {
     const quantity = Number(item.quantity) || 1;
     const unitPrice = Number(item.unit_price) || 0;
     const baseAmount = quantity * unitPrice;
@@ -180,44 +180,22 @@ const buildLineItemRows = (invoice, currency) => {
     const discountAmount = Number.isNaN(discountAmountRaw)
       ? 0
       : Math.min(Math.max(discountAmountRaw, 0), baseAmount);
-    const total = Number(item.total ?? (baseAmount - discountAmount));
-    const resolvedTotal = Number.isNaN(total) ? baseAmount - discountAmount : total;
+    const netAmount = Math.max(baseAmount - discountAmount, 0);
     const taxRate = Number(item.tax_rate) || 0;
+    const taxAmount = netAmount * (taxRate / 100);
+    const grossAmount = netAmount + taxAmount;
 
     return {
       index: `${index + 1}.`,
       description: item.description || 'Line item',
       descriptionMeta: appendMetaLines(item),
-      unitPrice: formatCurrency(unitPrice, currency),
-      quantity: quantity.toString(),
-      taxRate: `${taxRate}%`,
-      amount: formatCurrency(resolvedTotal, currency),
+      unitPriceDisplay: formatCurrency(unitPrice, currency),
+      quantityDisplay: quantity.toString(),
+      taxRateDisplay: `${taxRate}%`,
+      amountDisplay: formatCurrency(grossAmount, currency),
     };
   });
 };
-
-const buildPaymentLines = (clinicSettings) => {
-  const paymentInstructions = clinicSettings?.payment_instructions;
-  if (paymentInstructions?.lines?.length) {
-    return paymentInstructions.lines;
-  }
-  if (paymentInstructions?.text) {
-    return paymentInstructions.text.split('\n').map((line) => line.trim()).filter(Boolean);
-  }
-  return [
-    'Please make all payments to:',
-    'Megan Bridges',
-    'Account Number: 80856460',
-    'Sort Code: 30-92-16',
-  ];
-};
-
-const stripHtml = (value = '') =>
-  value
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .trim();
 
 const ensurePageSpace = (doc, branding, requiredHeight = 0) => {
   const usableBottom = doc.page.height - doc.page.margins.bottom - 40;
@@ -229,19 +207,18 @@ const ensurePageSpace = (doc, branding, requiredHeight = 0) => {
 };
 
 const renderFooter = (doc, branding) => {
-  const footerY = doc.page.height - 60;
+  const footerY = doc.page.height - 50;
   const footerWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const fallbackName = branding?.clinic_name || 'Bridges Physiotherapy Services';
-  const email = branding?.email || 'm.bridgespt@gmail.com';
-  const phone = branding?.phone || '074 5528 5117';
-  const footerText = [fallbackName, email, phone].filter(Boolean).join('  |  ');
+  const name = branding?.clinic_name || 'Bridges Physiotherapy Services';
+  const email = 'Megan@BridgesPhysiotherapy.co.uk';
+  const phone = '074 5528 5117';
 
   doc.save();
   doc.lineWidth(1).strokeColor(COLORS.border);
   doc.moveTo(doc.page.margins.left, footerY).lineTo(doc.page.width - doc.page.margins.right, footerY).stroke();
   doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted);
   doc.text(
-    footerText,
+    `${name} | ${email} | ${phone}`,
     doc.page.margins.left,
     footerY + 10,
     { width: footerWidth, align: 'center' },
@@ -249,20 +226,17 @@ const renderFooter = (doc, branding) => {
   doc.restore();
 };
 
-const drawHeader = (doc, {
-  branding,
-  invoice,
-  amountDue,
-  logoBuffer,
-}) => {
-  const cardHeight = 150;
+const spacedText = (value = '') => value.split('').join(' ').toUpperCase();
+
+const drawHeader = (doc, { branding, invoice, logoBuffer }) => {
   const cardWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const cardTop = doc.y;
+  const cardHeight = 160;
 
   doc.save();
-  doc.roundedRect(doc.page.margins.left, cardTop, cardWidth, cardHeight, 18)
+  doc.roundedRect(doc.page.margins.left, cardTop, cardWidth, cardHeight, 20)
     .fill('#ffffff')
-    .strokeColor('#e1e4f2')
+    .strokeColor(COLORS.border)
     .lineWidth(1)
     .stroke();
   doc.restore();
@@ -272,80 +246,82 @@ const drawHeader = (doc, {
 
   if (logoBuffer) {
     doc.image(logoBuffer, leftX, cardTop + 18, { fit: [180, 60], align: 'left' });
-  } else {
-    doc.font('Helvetica-Bold').fontSize(18).fillColor(COLORS.primary);
-    doc.text(branding?.clinic_name || 'Bridges Physiotherapy Services', leftX, cardTop + 24);
   }
 
-  doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.primary);
-  doc.text((branding?.clinic_name || 'Bridges Physiotherapy Services').toUpperCase(), leftX, cardTop + 90);
+  const brandLines = [
+    spacedText('Bridges'),
+    spacedText('Physiotherapy'),
+    spacedText('Services'),
+    'Megan@BridgesPhysiotherapy.co.uk',
+    'www.bridgesphysiotherapy.co.uk',
+  ];
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.primary);
+  brandLines.slice(0, 3).forEach((line, index) => {
+    doc.text(line, leftX, cardTop + 90 + index * 14);
+  });
   doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted);
-  [branding?.email, branding?.website].filter(Boolean).forEach((line) => {
-    doc.text(line, leftX, doc.y, { lineGap: 2 });
+  brandLines.slice(3).forEach((line, index) => {
+    doc.text(line, leftX, cardTop + 132 + index * 14);
   });
 
+  const metaEntries = [
+    { label: spacedText('Issue Date'), value: formatDate(invoice?.issue_date || new Date()) || '-' },
+    { label: spacedText('Invoice Number'), value: invoice?.invoice_number || '-' },
+    { label: spacedText('Due Date'), value: formatDate(invoice?.due_date) || 'Due on receipt' },
+  ];
   doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted);
-  doc.text('ISSUE DATE', rightX, cardTop + 26);
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.primary);
-  doc.text(formatDate(invoice?.issue_date || new Date()) || '-', rightX, doc.y);
+  metaEntries.forEach((entry, idx) => {
+    const blockY = cardTop + 24 + idx * 42;
+    doc.text(entry.label, rightX, blockY);
+    doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.primary);
+    doc.text(entry.value, rightX, blockY + 14, { width: 200, align: 'left' });
+    doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted);
+  });
 
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted);
-  doc.text('INVOICE NUMBER', rightX, doc.y + 12);
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.primary);
-  doc.text(invoice?.invoice_number || '-', rightX, doc.y);
-
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted);
-  doc.text('DUE DATE', rightX, doc.y + 12);
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.primary);
-  doc.text(formatDate(invoice?.due_date) || 'Due on receipt', rightX, doc.y);
-
-  doc.y = cardTop + cardHeight + 18;
+  doc.y = cardTop + cardHeight + 20;
 };
 
 const drawBillToSection = (doc, invoice) => {
-  const sectionTop = doc.y + 10;
   doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.primary);
-  doc.text('BILL TO', doc.page.margins.left, sectionTop);
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.primary);
-  doc.text(invoice?.billing_contact_name || invoice?.patient_name || 'Valued Client', doc.page.margins.left, doc.y + 4);
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted);
+  doc.text(spacedText('Bill To'), doc.page.margins.left, doc.y);
+  doc.moveDown(0.3);
 
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.primary);
+  doc.text(invoice?.billing_contact_name || invoice?.patient_name || 'Valued Client', doc.page.margins.left, doc.y);
+
+  doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted);
   [
     invoice?.billing_contact_email || invoice?.patient_email,
     invoice?.billing_contact_phone || invoice?.patient_phone,
     invoice?.client_id ? `Client ID: ${invoice.client_id}` : null,
-  ]
-    .filter(Boolean)
-    .forEach((line) => doc.text(line, doc.page.margins.left, doc.y + 2));
+  ].filter(Boolean).forEach((line) => doc.text(line, doc.page.margins.left, doc.y + 2));
 
-  doc.y += 6;
   doc.moveDown(1);
   doc.strokeColor(COLORS.border).lineWidth(1);
   doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
-  doc.moveDown(0.6);
+  doc.moveDown(0.8);
 };
 
-const drawLineItemsTable = (doc, lineItems, currency, branding) => {
+const drawLineItemsTable = (doc, lineItems, branding) => {
   const columns = [
     { key: 'index', label: '#', width: 30, align: 'left' },
-    { key: 'description', label: 'PRODUCT DETAILS', width: 220, align: 'left' },
-    { key: 'unitPrice', label: 'PRICE', width: 70, align: 'right' },
-    { key: 'quantity', label: 'QTY.', width: 40, align: 'center' },
-    { key: 'taxRate', label: 'TAX', width: 50, align: 'right' },
-    { key: 'amount', label: 'AMOUNT', width: 80, align: 'right' },
+    { key: 'description', label: 'P R O D U C T   D E T A I L S', width: 220, align: 'left' },
+    { key: 'unitPriceDisplay', label: 'P R I C E', width: 65, align: 'right' },
+    { key: 'quantityDisplay', label: 'Q T Y .', width: 40, align: 'center' },
+    { key: 'taxRateDisplay', label: 'T A X', width: 45, align: 'right' },
+    { key: 'amountDisplay', label: 'A M O U N T', width: 80, align: 'right' },
   ];
   const tableWidth = columns.reduce((sum, col) => sum + col.width, 0) + 20;
   const startX = doc.page.margins.left;
 
   ensurePageSpace(doc, branding, 80);
-
   doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.primary);
   doc.text('SERVICES', doc.page.margins.left, doc.y);
   doc.moveDown(0.4);
 
   const headerY = doc.y;
   doc.save();
-  doc.roundedRect(startX, headerY, tableWidth, 26, 10).fill(COLORS.tableHeader);
+  doc.roundedRect(startX, headerY, tableWidth, 28, 10).fill(COLORS.tableHeader);
   doc.restore();
 
   let columnX = startX + 10;
@@ -354,7 +330,7 @@ const drawLineItemsTable = (doc, lineItems, currency, branding) => {
     doc.text(col.label, columnX, headerY + 8, { width: col.width, align: col.align });
     columnX += col.width;
   });
-  doc.y = headerY + 28;
+  doc.y = headerY + 30;
 
   doc.font('Helvetica').fontSize(9).fillColor(COLORS.primary);
   lineItems.forEach((row) => {
@@ -374,7 +350,7 @@ const drawLineItemsTable = (doc, lineItems, currency, branding) => {
         row.descriptionMeta.join('\n'),
         startX + 40,
         rowTop + 18,
-        { width: 210, align: 'left' },
+        { width: 200, align: 'left' },
       );
       doc.font('Helvetica').fontSize(9).fillColor(COLORS.primary);
       doc.y = rowTop + 36;
@@ -388,70 +364,55 @@ const drawLineItemsTable = (doc, lineItems, currency, branding) => {
   doc.moveDown(0.8);
 };
 
-const drawAmountDueBanner = (doc, totals, currency) => {
+const drawAmountDueBanner = (doc, totals, currency, dueDate) => {
   const bannerWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const bannerTop = doc.y;
   doc.save();
-  doc.roundedRect(doc.page.margins.left, bannerTop, bannerWidth, 40, 12).fill(COLORS.tableHeader);
-  doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(10);
-  doc.text(`AMOUNT DUE  ${formatDate(totals?.dueDate) || ''}`, doc.page.margins.left + 16, bannerTop + 12);
-  doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.primary);
+  doc.roundedRect(doc.page.margins.left, bannerTop, bannerWidth, 48, 14).fill(COLORS.tableHeader);
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.muted);
+  doc.text('A M O U N T   D U E', doc.page.margins.left + 16, bannerTop + 12);
+  doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted);
+  doc.text(`Due ${formatDate(dueDate) || 'on receipt'}`, doc.page.margins.left + 16, bannerTop + 26);
+  doc.font('Helvetica-Bold').fontSize(16).fillColor(COLORS.primary);
   doc.text(
     formatCurrency(totals.balance || totals.gross || 0, currency),
     doc.page.margins.left,
-    bannerTop + 10,
+    bannerTop + 12,
     { width: bannerWidth - 20, align: 'right' },
   );
   doc.restore();
-  doc.moveDown(1.2);
+  doc.moveDown(1.5);
 };
 
-const drawPaymentSection = (doc, clinicSettings, invoice, branding) => {
-  const lines = buildPaymentLines(clinicSettings);
-  if (invoice?.invoice_number) {
-    lines.push(`Payment Reference: ${invoice.invoice_number}`);
-  }
+const drawPaymentSection = (doc, branding, invoice) => {
   ensurePageSpace(doc, branding, 110);
   doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.primary);
-  doc.text('PAYMENT DETAILS', doc.page.margins.left, doc.y);
-  doc.moveDown(0.4);
+  doc.text('P A Y M E N T   D E T A I L S', doc.page.margins.left, doc.y);
+  doc.moveDown(0.6);
 
   const boxWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const boxTop = doc.y;
   doc.save();
-  doc.roundedRect(doc.page.margins.left, boxTop, boxWidth, lines.length * 16 + 24, 12).fill(COLORS.paymentBackground);
+  doc.roundedRect(doc.page.margins.left, boxTop, boxWidth, 110, 16).fill(COLORS.paymentBackground);
   doc.font('Helvetica').fontSize(10).fillColor(COLORS.primary);
-  lines.forEach((line, index) => {
-    doc.text(line, doc.page.margins.left + 16, boxTop + 12 + index * 14);
+  const lines = [
+    'Please make all payments to:',
+    'Megan Bridges',
+    'Account Number: 80856460',
+    'Sort Code: 30-92-16',
+    `Payment Reference: ${invoice?.invoice_number || '-'}`,
+  ];
+  lines.forEach((line, idx) => {
+    doc.text(line, doc.page.margins.left + 18, boxTop + 16 + idx * 16);
   });
   doc.restore();
   doc.moveDown(2);
 };
 
-const drawNotesSection = (doc, invoice, clinicSettings, branding) => {
-  const notes = stripHtml(invoice?.notes || clinicSettings?.branding?.notes || '');
-  if (!notes) {
-    return;
-  }
-  ensurePageSpace(doc, branding, 80);
-  doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.primary);
-  doc.text('NOTES', doc.page.margins.left, doc.y);
-  doc.moveDown(0.3);
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted);
-  doc.text(notes, {
-    width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
-  });
-  doc.moveDown(1);
-};
-
 const createInvoicePdfBuffer = async ({ invoice, clinicSettings }) => {
   const branding = clinicSettings?.branding || {};
   const currency = invoice?.currency || 'GBP';
-  const totals = {
-    ...buildTotals(invoice),
-    dueDate: invoice?.due_date,
-  };
-  const amountDue = totals.balance || totals.gross || totals.net || 0;
+  const totals = buildTotals(invoice);
   const lineItems = buildLineItemRows(invoice, currency);
   const logoBuffer = await loadLogoBuffer(branding);
 
@@ -470,12 +431,11 @@ const createInvoicePdfBuffer = async ({ invoice, clinicSettings }) => {
     doc.on('error', reject);
   });
 
-  drawHeader(doc, { branding, invoice, amountDue, logoBuffer });
+  drawHeader(doc, { branding, invoice, logoBuffer });
   drawBillToSection(doc, invoice);
-  drawLineItemsTable(doc, lineItems, currency, branding);
-  drawAmountDueBanner(doc, totals, currency);
-  drawPaymentSection(doc, clinicSettings, invoice, branding);
-  drawNotesSection(doc, invoice, clinicSettings, branding);
+  drawLineItemsTable(doc, lineItems, branding);
+  drawAmountDueBanner(doc, totals, currency, invoice?.due_date);
+  drawPaymentSection(doc, branding, invoice);
   renderFooter(doc, branding);
   doc.end();
 
