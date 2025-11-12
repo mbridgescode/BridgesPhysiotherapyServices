@@ -346,6 +346,18 @@ const generateInvoicePdf = async ({ invoice, clinicSettings }) => {
         left: '16mm',
       },
     });
+    if (pdfBuffer?.length) {
+      const firstBytes = pdfBuffer.subarray(0, 8).toString('hex');
+      console.log('[pdfService] pdf-bytes', {
+        invoice: invoice?.invoice_number,
+        bytes: firstBytes,
+        size: pdfBuffer.length,
+      });
+    } else {
+      console.warn('[pdfService] pdf-buffer-empty', {
+        invoice: invoice?.invoice_number,
+      });
+    }
   } finally {
     await page.close().catch(() => {});
   }
