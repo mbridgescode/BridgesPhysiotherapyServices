@@ -231,6 +231,7 @@ const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }
     billingContact,
     clinicSettings: settings,
     appointment,
+    patient,
   });
   try {
     const emailResult = await sendTransactionalEmail({

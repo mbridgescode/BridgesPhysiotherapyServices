@@ -562,6 +562,7 @@ router.post(
           invoice: invoiceForPdf || invoice,
           billingContact,
           clinicSettings: settings,
+          patient,
         });
         const emailResult = await sendTransactionalEmail({
           to: billingContact.email,
@@ -779,6 +780,7 @@ router.post(
         invoice: invoiceForExport || invoice,
         billingContact,
         clinicSettings: settings,
+        patient,
       });
 
       const emailResult = await sendTransactionalEmail({
