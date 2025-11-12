@@ -701,13 +701,23 @@ router.get(
   authorize('admin', 'receptionist', 'therapist'),
   async (req, res, next) => {
     try {
+      console.log('[invoicePdf] request', {
+        invoice: req.params.invoiceNumber,
+        user: req.user?.id,
+        time: new Date().toISOString(),
+      });
       const invoice = await Invoice.findOne({ invoice_number: req.params.invoiceNumber });
       if (!invoice) {
+        console.warn('[invoicePdf] not-found', { invoice: req.params.invoiceNumber });
         return res.status(404).json({ success: false, message: 'Invoice not found' });
       }
 
       const patient = await Patient.findOne({ patient_id: invoice.patient_id });
       if (!patient) {
+        console.warn('[invoicePdf] patient-not-found', {
+          invoice: req.params.invoiceNumber,
+          patientId: invoice.patient_id,
+        });
         return res.status(404).json({ success: false, message: 'Patient not found' });
       }
 
@@ -720,10 +730,23 @@ router.get(
         billingContact,
       });
 
+      const renderStart = Date.now();
       const { pdfPath, pdfBuffer, html } = await generateInvoicePdf({
         invoice: invoiceForExport,
         clinicSettings: settings,
       });
+      const renderDurationMs = Date.now() - renderStart;
+      console.log('[invoicePdf] render-complete', {
+        invoice: invoice.invoice_number,
+        bufferSize: pdfBuffer?.length,
+        persistedPath: pdfPath ? path.relative(process.cwd(), pdfPath) : null,
+        durationMs: renderDurationMs,
+      });
+      if (!pdfBuffer?.length) {
+        console.error('[invoicePdf] empty-buffer', {
+          invoice: invoice.invoice_number,
+        });
+      }
 
       invoice.pdf_path = pdfPath ? path.relative(process.cwd(), pdfPath) : null;
       invoice.pdf_url = buildPdfUrl(invoice.invoice_number);
@@ -734,8 +757,17 @@ router.get(
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${invoice.invoice_number}.pdf"`);
+      console.log('[invoicePdf] response-ready', {
+        invoice: invoice.invoice_number,
+        contentLength: pdfBuffer?.length,
+      });
       return res.send(pdfBuffer);
     } catch (error) {
+      console.error('[invoicePdf] error', {
+        invoice: req.params.invoiceNumber,
+        message: error?.message,
+        stack: error?.stack,
+      });
       return next(error);
     }
   },
