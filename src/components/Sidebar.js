@@ -121,7 +121,7 @@ const Sidebar = ({
       label: 'Settings',
       icon: <SettingsIcon />,
       path: '/dashboard/settings',
-      roles: ['admin'],
+      roles: ['admin', 'therapist'],
     },
     {
       label: 'Audit Log',

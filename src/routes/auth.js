@@ -562,15 +562,23 @@ router.post('/register', authenticate, authorize('admin'), async (req, res, next
       return res.status(400).json({ success: false, message: 'username, email and password are required' });
     }
 
+    const allowedRoles = ['admin', 'therapist', 'receptionist'];
+    const normalizeRole = (value) => (allowedRoles.includes(value) ? value : 'therapist');
+    let resolvedRole = normalizeRole(role);
+    if (administrator || resolvedRole === 'admin') {
+      resolvedRole = 'admin';
+    }
+    const isAdministrator = resolvedRole === 'admin';
+
     const employeeIdValue = await Counter.next('employee_id', 1);
 
     const user = await User.create({
       username: username.toLowerCase(),
       email: email.toLowerCase(),
       password,
-      role,
+      role: resolvedRole,
       employeeID: employeeIdValue,
-      administrator,
+      administrator: isAdministrator,
     });
 
     await recordAuditEvent({

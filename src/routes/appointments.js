@@ -60,6 +60,40 @@ const applyFilters = (query, { employeeID, status, from, to, includeCancelled })
   }
 };
 
+const userCanManageAppointment = (appointment, user) => {
+  if (!appointment || !user) {
+    return false;
+  }
+  if (user.role === 'admin' || user.role === 'receptionist') {
+    return true;
+  }
+
+  const employeeMatches = appointment.employeeID !== undefined
+    && appointment.employeeID !== null
+    && user.employeeID !== undefined
+    && user.employeeID !== null
+    && Number(appointment.employeeID) === Number(user.employeeID);
+
+  if (employeeMatches) {
+    return true;
+  }
+
+  const therapistId = appointment.therapist?._id || appointment.therapist;
+  if (therapistId && therapistId.toString && therapistId.toString() === String(user.id)) {
+    return true;
+  }
+
+  if (
+    appointment.createdBy
+    && appointment.createdBy.toString
+    && appointment.createdBy.toString() === String(user.id)
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 const buildPatientDisplayName = (patient) => {
   const parts = [patient?.first_name, patient?.surname].filter(Boolean);
   if (parts.length) {
@@ -594,24 +628,35 @@ router.put(
         return res.status(400).json({ success: false, message: 'Invalid appointment id' });
       }
 
-      const update = {
-        ...req.body,
-        updatedBy: req.user.id,
-      };
-
-      if (update.status === 'cancelled') {
-        update.cancelled_at = new Date();
-      }
-
-      const appointment = await Appointment.findOneAndUpdate(
-        { appointment_id: appointmentId },
-        { $set: update },
-        { new: true },
-      );
+      const appointment = await Appointment.findOne({ appointment_id: appointmentId });
 
       if (!appointment) {
         return res.status(404).json({ success: false, message: 'Appointment not found' });
       }
+
+      if (!userCanManageAppointment(appointment, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
+      const updatePayload = {
+        ...req.body,
+      };
+
+      if (updatePayload.status === 'cancelled') {
+        updatePayload.cancelled_at = new Date();
+      }
+
+      delete updatePayload.appointment_id;
+      delete updatePayload.patient_id;
+
+      Object.entries(updatePayload).forEach(([key, value]) => {
+        if (value !== undefined) {
+          appointment.set(key, value);
+        }
+      });
+
+      appointment.updatedBy = req.user.id;
+      await appointment.save();
 
       await recordAuditEvent({
         event: 'appointment.update',
@@ -621,7 +666,7 @@ router.put(
         metadata: { appointment_id: appointmentId.toString() },
       });
 
-      return res.json({ success: true, appointment });
+      return res.json({ success: true, appointment: toPlainObject(appointment) });
     } catch (error) {
       return next(error);
     }
@@ -662,6 +707,10 @@ router.post(
       const appointment = await Appointment.findOne({ appointment_id: appointmentId });
       if (!appointment) {
         return res.status(404).json({ success: false, message: 'Appointment not found' });
+      }
+
+      if (!userCanManageAppointment(appointment, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
       const update = {
@@ -758,22 +807,21 @@ router.patch(
 
       const { reason } = req.body;
 
-      const appointment = await Appointment.findOneAndUpdate(
-        { appointment_id: appointmentId },
-        {
-          $set: {
-            status: 'cancelled',
-            cancellation_reason: reason,
-            cancelled_at: new Date(),
-            updatedBy: req.user.id,
-          },
-        },
-        { new: true },
-      );
+      const appointment = await Appointment.findOne({ appointment_id: appointmentId });
 
       if (!appointment) {
         return res.status(404).json({ success: false, message: 'Appointment not found' });
       }
+
+      if (!userCanManageAppointment(appointment, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
+      appointment.status = 'cancelled';
+      appointment.cancellation_reason = reason;
+      appointment.cancelled_at = new Date();
+      appointment.updatedBy = req.user.id;
+      await appointment.save();
 
       await recordAuditEvent({
         event: 'appointment.cancel',
@@ -783,7 +831,7 @@ router.patch(
         metadata: { appointment_id: appointmentId.toString() },
       });
 
-      return res.json({ success: true, appointment });
+      return res.json({ success: true, appointment: toPlainObject(appointment) });
     } catch (error) {
       return next(error);
     }
@@ -812,20 +860,19 @@ router.put(
         ? { appointment_id: appointmentId }
         : { appointment_id: normalizedAppointmentId };
 
-      const appointment = await Appointment.findOneAndUpdate(
-        filter,
-        {
-          $set: {
-            treatment_notes: treatmentNotes,
-            updatedBy: req.user.id,
-          },
-        },
-        { new: true },
-      );
+      const appointment = await Appointment.findOne(filter);
 
       if (!appointment) {
         return res.status(404).json({ success: false, message: 'Appointment not found' });
       }
+
+      if (!userCanManageAppointment(appointment, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
+      appointment.treatment_notes = treatmentNotes;
+      appointment.updatedBy = req.user.id;
+      await appointment.save();
 
       await recordAuditEvent({
         event: 'appointment.note.update',
@@ -835,7 +882,7 @@ router.put(
         metadata: { appointment_id: appointment.appointment_id.toString() },
       });
 
-      return res.json({ success: true, appointment });
+      return res.json({ success: true, appointment: toPlainObject(appointment) });
     } catch (error) {
       return next(error);
     }
@@ -859,23 +906,24 @@ router.post(
         return res.status(400).json({ success: false, message: 'note is required' });
       }
 
-      const appointment = await Appointment.findOneAndUpdate(
-        { appointment_id: appointmentId },
-        {
-          $push: {
-            clinical_notes: {
-              author: req.user.id,
-              note,
-            },
-          },
-          $set: { updatedBy: req.user.id },
-        },
-        { new: true },
-      );
+      const appointment = await Appointment.findOne({ appointment_id: appointmentId });
 
       if (!appointment) {
         return res.status(404).json({ success: false, message: 'Appointment not found' });
       }
+
+      if (!userCanManageAppointment(appointment, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
+      appointment.clinical_notes = appointment.clinical_notes || [];
+      appointment.clinical_notes.push({
+        author: req.user.id,
+        note,
+        createdAt: new Date(),
+      });
+      appointment.updatedBy = req.user.id;
+      await appointment.save();
 
       await recordAuditEvent({
         event: 'appointment.clinical_note.create',
@@ -885,7 +933,7 @@ router.post(
         metadata: { appointment_id: appointmentId.toString() },
       });
 
-      return res.json({ success: true, appointment });
+      return res.json({ success: true, appointment: toPlainObject(appointment) });
     } catch (error) {
       return next(error);
     }

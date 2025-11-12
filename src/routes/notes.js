@@ -1,9 +1,18 @@
 const express = require('express');
 const Note = require('../models/notes');
+const Patient = require('../models/patients');
 const { authenticate, authorize } = require('../middleware/auth');
 const { recordAuditEvent } = require('../utils/audit');
+const { userCanAccessPatient } = require('../utils/accessControl');
 
 const router = express.Router();
+
+const buildPatientFilter = (patientId) => {
+  const normalizedPatientId = Number(patientId);
+  return Number.isNaN(normalizedPatientId)
+    ? { patient_id: patientId }
+    : { patient_id: normalizedPatientId };
+};
 
 router.post(
   '/',
@@ -28,8 +37,17 @@ router.post(
         });
       }
 
+      const patient = await Patient.findOne(buildPatientFilter(patientId));
+      if (!patient) {
+        return res.status(404).json({ success: false, message: 'Patient not found' });
+      }
+
+      if (!userCanAccessPatient(patient.toObject ? patient.toObject() : patient, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
       const payload = {
-        patient_id: patientId,
+        patient_id: patient.patient_id,
         appointment_id: appointmentId,
         note,
         employeeID,
@@ -68,10 +86,16 @@ router.get(
   async (req, res, next) => {
     try {
       const { patientId } = req.params;
-      const normalizedPatientId = Number(patientId);
-      const filter = Number.isNaN(normalizedPatientId)
-        ? { patient_id: patientId }
-        : { patient_id: normalizedPatientId };
+      const filter = buildPatientFilter(patientId);
+
+      const patient = await Patient.findOne(filter);
+      if (!patient) {
+        return res.status(404).json({ success: false, message: 'Patient not found' });
+      }
+
+      if (!userCanAccessPatient(patient.toObject ? patient.toObject() : patient, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
 
       const notes = await Note.find(filter)
         .sort({ date: -1 })

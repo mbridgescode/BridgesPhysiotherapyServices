@@ -19,6 +19,21 @@ const formatUser = (user) => ({
   twoFactorEnabled: Boolean(user.twoFactorEnabled),
 });
 
+const ALLOWED_ROLES = ['admin', 'therapist', 'receptionist'];
+
+const parseBoolean = (value) => {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+  return Boolean(value);
+};
+
 router.get('/me', authenticate, async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
@@ -86,12 +101,35 @@ router.patch(
         return res.status(404).json({ success: false, message: 'User not found' });
       }
 
-      const allowedFields = ['role', 'administrator', 'active', 'email'];
-      allowedFields.forEach((field) => {
-        if (req.body[field] !== undefined) {
-          user[field] = req.body[field];
+      if (req.body.role !== undefined && !ALLOWED_ROLES.includes(req.body.role)) {
+        return res.status(400).json({ success: false, message: 'Invalid role provided' });
+      }
+
+      if (req.body.email !== undefined) {
+        user.email = typeof req.body.email === 'string'
+          ? req.body.email.toLowerCase()
+          : req.body.email;
+      }
+
+      if (req.body.active !== undefined) {
+        user.active = parseBoolean(req.body.active);
+      }
+
+      if (req.body.role !== undefined) {
+        user.role = req.body.role;
+      }
+
+      if (req.body.administrator !== undefined) {
+        const administratorFlag = parseBoolean(req.body.administrator);
+        if (administratorFlag) {
+          user.role = 'admin';
+        } else if (req.body.role === undefined && user.role === 'admin') {
+          user.role = 'therapist';
         }
-      });
+        user.administrator = administratorFlag;
+      }
+
+      user.administrator = user.role === 'admin';
 
       await user.save();
 

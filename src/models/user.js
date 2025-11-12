@@ -82,6 +82,11 @@ userSchema.pre('save', async function hashPassword(next) {
   }
 });
 
+userSchema.pre('save', function syncAdministratorFlag(next) {
+  this.administrator = this.role === 'admin';
+  next();
+});
+
 userSchema.methods.comparePassword = function comparePassword(candidate) {
   return bcrypt.compare(candidate, this.password);
 };

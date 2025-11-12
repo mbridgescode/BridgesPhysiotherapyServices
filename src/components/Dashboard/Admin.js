@@ -47,6 +47,7 @@ const Admin = () => {
   const [creating, setCreating] = useState(false);
   const [savingUserId, setSavingUserId] = useState(null);
   const [deletingUserId, setDeletingUserId] = useState(null);
+  const [lastNonAdminRole, setLastNonAdminRole] = useState(defaultForm.role);
 
   const isAdmin = userData?.role === 'admin';
 
@@ -86,7 +87,34 @@ const Admin = () => {
   }, [isAdmin]);
 
   const handleFormChange = (field) => (event) => {
-    const value = field === 'administrator' ? event.target.checked : event.target.value;
+    if (field === 'administrator') {
+      const checked = event.target.checked;
+      setFormState((prev) => ({
+        ...prev,
+        administrator: checked,
+        role: checked
+          ? 'admin'
+          : prev.role === 'admin'
+            ? lastNonAdminRole
+            : prev.role,
+      }));
+      return;
+    }
+
+    if (field === 'role') {
+      const value = event.target.value;
+      if (value !== 'admin') {
+        setLastNonAdminRole(value);
+      }
+      setFormState((prev) => ({
+        ...prev,
+        role: value,
+        administrator: value === 'admin',
+      }));
+      return;
+    }
+
+    const value = event.target.value;
     setFormState((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -108,6 +136,7 @@ const Admin = () => {
         administrator: formState.administrator,
       });
       setFormState(defaultForm);
+      setLastNonAdminRole(defaultForm.role);
       await loadUsers();
     } catch (err) {
       console.error('Failed to create user', err);
@@ -132,7 +161,7 @@ const Admin = () => {
   };
 
   const handleRoleChange = (userId, value) => {
-    handleUserUpdate(userId, { role: value });
+    handleUserUpdate(userId, { role: value, administrator: value === 'admin' });
   };
 
   const handleActiveToggle = (userId, current) => {
