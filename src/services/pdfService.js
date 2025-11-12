@@ -44,6 +44,23 @@ const ensureDirectory = (dirPath) => {
 let resolvedPersistDirectory = null;
 let persistDirectoryResolved = false;
 
+const normalizeToBuffer = (value, label = 'pdfService') => {
+  if (!value) {
+    return null;
+  }
+  if (Buffer.isBuffer(value)) {
+    return value;
+  }
+  if (ArrayBuffer.isView(value)) {
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  }
+  if (value instanceof ArrayBuffer) {
+    return Buffer.from(value);
+  }
+  console.warn(`[pdfService] Unable to normalize buffer from ${label}; received type ${typeof value}`);
+  return null;
+};
+
 const resolvePersistDirectory = () => {
   if (persistDirectoryResolved) {
     return resolvedPersistDirectory;
@@ -346,6 +363,7 @@ const generateInvoicePdf = async ({ invoice, clinicSettings }) => {
         left: '16mm',
       },
     });
+    pdfBuffer = normalizeToBuffer(pdfBuffer, 'page.pdf()');
     if (pdfBuffer?.length) {
       const firstBytes = pdfBuffer.subarray(0, 8).toString('hex');
       console.log('[pdfService] pdf-bytes', {
