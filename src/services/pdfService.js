@@ -1,16 +1,24 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { chromium } = require('playwright');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
+
+let localChromeExecutablePath = null;
+try {
+  // Prefer puppeteer's bundled Chromium for local development if available.
+  // This dependency is optional in production builds.
+  // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+  const localPuppeteer = require('puppeteer');
+  if (typeof localPuppeteer.executablePath === 'function') {
+    localChromeExecutablePath = localPuppeteer.executablePath();
+  }
+} catch (error) {
+  localChromeExecutablePath = null;
+}
+
 const { invoiceStoragePath, pdfTempPath } = require('../config/env');
 const { renderInvoiceTemplate } = require('../templates/invoiceTemplate');
-
-const DEFAULT_MARGIN = {
-  top: '20mm',
-  right: '16mm',
-  bottom: '20mm',
-  left: '16mm',
-};
 
 const ensureDirectory = (dirPath) => {
   if (!dirPath) {
@@ -36,13 +44,15 @@ const resolvePersistDirectory = () => {
     return resolvedPersistDirectory;
   }
 
-  const candidates = Array.from(new Set([
-    invoiceStoragePath,
-    pdfTempPath,
-    path.join(os.tmpdir(), 'bridges-physio-invoices'),
-  ].filter(Boolean)));
+  const fallbackDirectories = Array.from(new Set(
+    [
+      invoiceStoragePath,
+      pdfTempPath,
+      path.join(os.tmpdir(), 'bridges-physio-invoices'),
+    ].filter(Boolean),
+  ));
 
-  for (const candidate of candidates) {
+  for (const candidate of fallbackDirectories) {
     const resolved = ensureDirectory(candidate);
     if (resolved) {
       resolvedPersistDirectory = resolved;
@@ -57,38 +67,77 @@ const resolvePersistDirectory = () => {
   return null;
 };
 
-const resolveExecutablePath = () => (
-  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
-  || process.env.CHROME_EXECUTABLE_PATH
-  || null
+const isServerlessEnvironment = Boolean(
+  process.env.AWS_REGION
+  || process.env.LAMBDA_TASK_ROOT
+  || process.env.VERCEL,
 );
 
-const buildLaunchOptions = () => {
-  const options = {
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-    ],
-  };
-  const executablePath = resolveExecutablePath();
-  if (executablePath) {
-    options.executablePath = executablePath;
+const resolveExecutable = async () => {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return {
+      path: process.env.PUPPETEER_EXECUTABLE_PATH,
+      useChromiumConfig: false,
+    };
   }
-  return options;
+
+  if (process.env.CHROMIUM_PATH) {
+    return {
+      path: process.env.CHROMIUM_PATH,
+      useChromiumConfig: true,
+    };
+  }
+
+  if (isServerlessEnvironment || process.platform === 'linux') {
+    return {
+      path: await chromium.executablePath(),
+      useChromiumConfig: true,
+    };
+  }
+
+  if (localChromeExecutablePath) {
+    return {
+      path: localChromeExecutablePath,
+      useChromiumConfig: false,
+    };
+  }
+
+  // Fall back to the chromium binary even if it might not be compatible.
+  return {
+    path: await chromium.executablePath(),
+    useChromiumConfig: true,
+  };
 };
 
-let browserPromise = null;
+const buildLaunchOptions = async () => {
+  const { path: executablePath, useChromiumConfig } = await resolveExecutable();
+
+  const baseOptions = {
+    executablePath,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    headless: 'new',
+  };
+
+  if (useChromiumConfig) {
+    baseOptions.args = chromium.args;
+    baseOptions.defaultViewport = chromium.defaultViewport;
+    baseOptions.headless = chromium.headless ?? 'new';
+  }
+
+  return baseOptions;
+};
+
+let browserPromise;
 
 const getBrowser = async () => {
   if (!browserPromise) {
-    browserPromise = chromium.launch(buildLaunchOptions())
-      .catch((error) => {
-        browserPromise = null;
-        throw error;
-      });
+    browserPromise = (async () => {
+      const launchOptions = await buildLaunchOptions();
+      return puppeteer.launch(launchOptions);
+    })().catch((error) => {
+      browserPromise = null;
+      throw error;
+    });
   }
   return browserPromise;
 };
@@ -118,6 +167,7 @@ const waitForContent = async (page) => {
 
 const generateInvoicePdf = async ({ invoice, clinicSettings }) => {
   const persistDirectory = resolvePersistDirectory();
+
   const filename = `${invoice.invoice_number}.pdf`;
   const targetPath = persistDirectory ? path.join(persistDirectory, filename) : null;
   const html = renderInvoiceTemplate({ invoice, clinicSettings });
@@ -126,16 +176,22 @@ const generateInvoicePdf = async ({ invoice, clinicSettings }) => {
   const page = await browser.newPage();
 
   let pdfBuffer;
+
   try {
-    await page.setContent(html, { waitUntil: 'networkidle' });
+    await page.setContent(html, { waitUntil: 'networkidle0' });
     await waitForFonts(page);
     await waitForContent(page);
-    await page.emulateMedia({ media: 'screen' });
+    await page.emulateMediaType('screen');
     pdfBuffer = await page.pdf({
       path: targetPath || undefined,
       format: 'A4',
       printBackground: true,
-      margin: DEFAULT_MARGIN,
+      margin: {
+        top: '20mm',
+        right: '16mm',
+        bottom: '20mm',
+        left: '16mm',
+      },
     });
   } finally {
     await page.close().catch(() => {});
