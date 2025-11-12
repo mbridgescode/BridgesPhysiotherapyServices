@@ -3,7 +3,6 @@ const { toPlainObject } = require('./mongoose');
 
 const calculateTotals = ({ lineItems = [], discount }) => {
   let subtotal = 0;
-  let taxTotal = 0;
   let lineDiscountTotal = 0;
 
   lineItems.forEach((item) => {
@@ -17,17 +16,14 @@ const calculateTotals = ({ lineItems = [], discount }) => {
     const lineNet = Math.max(baseAmount - lineDiscount, 0);
     lineDiscountTotal += lineDiscount;
     subtotal += lineNet;
-    const lineTax = lineNet * (Number(item.tax_rate || 0) / 100);
-    taxTotal += lineTax;
   });
 
   const invoiceDiscountAmount = Math.max(Number(discount?.amount || 0), 0);
   const discountAmount = lineDiscountTotal + invoiceDiscountAmount;
-  const totalDue = Math.max(0, subtotal + taxTotal - invoiceDiscountAmount);
+  const totalDue = Math.max(0, subtotal - invoiceDiscountAmount);
 
   return {
     subtotal,
-    taxTotal,
     discountAmount,
     lineDiscountTotal,
     invoiceDiscountAmount,
@@ -35,7 +31,6 @@ const calculateTotals = ({ lineItems = [], discount }) => {
     balanceDue: totalDue,
     totals: {
       net: subtotal,
-      tax: taxTotal,
       discount: discountAmount,
       gross: totalDue,
       paid: 0,
@@ -59,7 +54,6 @@ const refreshInvoiceWithPayments = async (invoice) => {
   invoice.balance_due = Math.max(0, invoice.total_due - totalPaid);
   invoice.totals = {
     net: invoice.subtotal ?? invoice.totals?.net ?? 0,
-    tax: invoice.tax_total ?? invoice.totals?.tax ?? 0,
     discount: invoice.discount?.amount ?? invoice.totals?.discount ?? 0,
     gross: invoice.total_due ?? invoice.totals?.gross ?? 0,
     paid: totalPaid,

@@ -113,7 +113,6 @@ const Settings = () => {
       const response = await apiClient.get('/api/settings/clinic');
       setSettings(response.data.settings || {
         branding: {},
-        tax: { default_rate: 0 },
         notification_preferences: {},
       });
       setError(null);
@@ -958,7 +957,6 @@ const handleSave = async () => {
   }
 
   const branding = settings?.branding || {};
-  const tax = settings?.tax || {};
   const notifications = settings?.notification_preferences || {};
 
   return (
@@ -1018,30 +1016,6 @@ const handleSave = async () => {
               fullWidth
               multiline
               minRows={2}
-            />
-          </Grid>
-        </Grid>
-
-        <Divider sx={{ my: 3 }} />
-        <Typography variant="h6" gutterBottom>
-          Tax & Finance
-        </Typography>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={4}>
-            <TextField
-              label='Default Tax Rate (%)'
-              type='number'
-              value={tax.default_rate || 0}
-              onChange={(event) => updateField('tax.default_rate', Number(event.target.value))}
-              fullWidth
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
-              label='Tax Registration Number'
-              value={tax.registration_number || ''}
-              onChange={(event) => updateField('tax.registration_number', event.target.value)}
-              fullWidth
             />
           </Grid>
         </Grid>

@@ -11,11 +11,6 @@ const brandingSchema = new mongoose.Schema({
   website: { type: String, trim: true },
 }, { _id: false });
 
-const taxSchema = new mongoose.Schema({
-  default_rate: { type: Number, default: 0 },
-  registration_number: { type: String, trim: true },
-}, { _id: false });
-
 const emailTemplateSchema = new mongoose.Schema({
   template_name: { type: String, required: true },
   subject: { type: String, required: true },
@@ -31,7 +26,6 @@ const notificationPreferencesSchema = new mongoose.Schema({
 
 const clinicSettingsSchema = new mongoose.Schema({
   branding: brandingSchema,
-  tax: taxSchema,
   invoice_prefix: { type: String, default: 'INV' },
   email_provider: {
     type: String,

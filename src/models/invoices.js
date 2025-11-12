@@ -7,7 +7,6 @@ const lineItemSchema = new mongoose.Schema({
   description: { type: String, required: true },
   quantity: { type: Number, required: true, min: 1, default: 1 },
   unit_price: { type: Number, required: true },
-  tax_rate: { type: Number, default: 0 },
   discount_amount: { type: Number, default: 0 },
   total: { type: Number, required: true },
   appointment_id: { type: Number },
@@ -30,7 +29,6 @@ const deliveryStatusSchema = new mongoose.Schema({
 
 const totalsSchema = new mongoose.Schema({
   net: { type: Number, default: 0 },
-  tax: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
   gross: { type: Number, default: 0 },
   paid: { type: Number, default: 0 },
@@ -93,7 +91,6 @@ const InvoiceSchema = new mongoose.Schema({
     line_item_amount: { type: Number, default: 0 },
     notes: encryptedStringField({ trim: true }),
   },
-  tax_total: { type: Number, required: true },
   total_due: { type: Number, required: true },
   total_paid: { type: Number, default: 0 },
   balance_due: { type: Number, required: true },

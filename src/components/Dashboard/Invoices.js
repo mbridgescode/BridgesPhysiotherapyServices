@@ -36,7 +36,6 @@ const defaultLineItem = () => ({
   description: '',
   quantity: 1,
   unit_price: 0,
-  tax_rate: 0,
   discount_amount: 0,
   service_date: '',
   appointment_id: undefined,
@@ -170,7 +169,6 @@ const Invoices = () => {
       ...item,
       quantity: Number(item.quantity),
       unit_price: Number(item.unit_price),
-      tax_rate: Number(item.tax_rate || 0),
       service_date: item.service_date || undefined,
       discount_amount: Number(item.discount_amount || 0),
       appointment_id: typeof item.appointment_id === 'number'
@@ -530,7 +528,6 @@ const Invoices = () => {
       || `Appointment ${appointment.appointment_id}`,
     quantity: 1,
     unit_price: resolveAppointmentBalance(appointment),
-    tax_rate: 0,
     discount_amount: 0,
     appointment_id: appointment.appointment_id,
     service_date: formatDateForInput(appointment.date),
@@ -705,15 +702,6 @@ const Invoices = () => {
       minWidth: 120,
       valueGetter: (row) => row.totals?.net ?? row.subtotal,
       render: (row) => formatCurrency(row.totals?.net ?? row.subtotal, row.currency),
-      filterable: false,
-    },
-    {
-      id: 'taxTotal',
-      label: 'Tax',
-      type: 'number',
-      minWidth: 120,
-      valueGetter: (row) => row.totals?.tax ?? row.tax_total,
-      render: (row) => formatCurrency(row.totals?.tax ?? row.tax_total, row.currency),
       filterable: false,
     },
     {
@@ -974,25 +962,16 @@ const Invoices = () => {
                       onChange={(event) => updateLineItem(index, 'unit_price', event.target.value)}
                     />
                   </Grid>
-                  <Grid item xs={6} md={2}>
-                    <TextField
-                      label="Discount"
-                      type="number"
-                      fullWidth
-                      value={item.discount_amount ?? 0}
-                      onChange={(event) => updateLineItem(index, 'discount_amount', event.target.value)}
-                      inputProps={{ min: 0, step: 0.01 }}
-                    />
-                  </Grid>
-                  <Grid item xs={6} md={1}>
-                    <TextField
-                      label="Tax %"
-                      type="number"
-                      fullWidth
-                      value={item.tax_rate}
-                      onChange={(event) => updateLineItem(index, 'tax_rate', event.target.value)}
-                    />
-                  </Grid>
+                <Grid item xs={6} md={3}>
+                  <TextField
+                    label="Discount"
+                    type="number"
+                    fullWidth
+                    value={item.discount_amount ?? 0}
+                    onChange={(event) => updateLineItem(index, 'discount_amount', event.target.value)}
+                    inputProps={{ min: 0, step: 0.01 }}
+                  />
+                </Grid>
                   <Grid item xs={12} md={1} display="flex" justifyContent="flex-end">
                     <IconButton onClick={() => removeLineItem(index)} disabled={formState.lineItems.length === 1}>
                       <DeleteIcon />

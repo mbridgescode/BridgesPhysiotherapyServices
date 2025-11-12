@@ -51,7 +51,6 @@ const escapeHtml = (value = '') =>
 const buildTotals = (invoice) => {
   const baseTotals = {
     net: invoice?.subtotal ?? 0,
-    tax: invoice?.tax_total ?? 0,
     discount: invoice?.discount?.amount ?? 0,
     gross: invoice?.total_due ?? 0,
     paid: invoice?.total_paid ?? 0,
@@ -75,7 +74,6 @@ const buildLineItems = (invoice, currency) => {
         <td class="cell description">Consultation</td>
         <td class="cell number">${formatCurrency(fallbackTotal, currency)}</td>
         <td class="cell number">1</td>
-        <td class="cell number">0%</td>
         <td class="cell number discount"><span class="muted">&mdash;</span></td>
         <td class="cell number">${formatCurrency(fallbackTotal, currency)}</td>
       </tr>`;
@@ -85,7 +83,6 @@ const buildLineItems = (invoice, currency) => {
     .map((item, index) => {
       const quantity = Number(item.quantity) || 1;
       const unitPrice = Number(item.unit_price) || 0;
-      const taxRate = Number(item.tax_rate) || 0;
       const baseAmount = quantity * unitPrice;
       const discountAmountRaw = Number(item.discount_amount || 0);
       const discountAmount = Number.isNaN(discountAmountRaw)
@@ -126,7 +123,6 @@ const buildLineItems = (invoice, currency) => {
           </td>
           <td class="cell number">${formatCurrency(unitPrice, currency)}</td>
           <td class="cell number">${quantity}</td>
-          <td class="cell number">${taxRate}%</td>
           <td class="cell number discount">${discountDisplay}</td>
           <td class="cell number">${formatCurrency(resolvedTotal, currency)}</td>
         </tr>`;
@@ -656,7 +652,6 @@ const renderInvoiceTemplate = ({
                 <th>Product details</th>
                 <th style='text-align:right;'>Price</th>
                 <th style='text-align:center;'>Qty.</th>
-                <th style='text-align:center;'>Tax</th>
                 <th style='text-align:right;'>Discount</th>
                 <th style='text-align:right;'>Amount</th>
               </tr>
@@ -664,7 +659,7 @@ const renderInvoiceTemplate = ({
             <tbody>
               ${buildLineItems(invoice, currency)}
               <tr class='line-total'>
-                <td colspan='6' class='cell total-label'>
+                <td colspan='5' class='cell total-label'>
                   Amount Due <span>${dueText}</span>
                 </td>
                 <td class='cell number total-value'>${formatCurrency(amountDue, currency)}</td>

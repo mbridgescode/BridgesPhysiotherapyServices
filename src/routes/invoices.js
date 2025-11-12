@@ -123,7 +123,6 @@ const normalizeLineItems = (lineItems = []) => lineItems.map((item, index) => {
     description: item.description,
     quantity,
     unit_price: unitPrice,
-    tax_rate: Number(item.tax_rate || 0),
     total: Math.max(resolvedTotal, 0),
     discount_amount: discountAmount,
     appointment_id: appointmentRef !== null ? appointmentRef : undefined,
@@ -147,7 +146,6 @@ const buildTotalsFallback = (invoice) => {
   const discountAmount = source.discount ?? invoice?.discount?.amount ?? 0;
   return {
     net: source.net ?? invoice?.subtotal ?? 0,
-    tax: source.tax ?? invoice?.tax_total ?? 0,
     discount: discountAmount,
     gross: source.gross ?? invoice?.total_due ?? 0,
     paid: source.paid ?? invoice?.total_paid ?? 0,
@@ -466,7 +464,6 @@ router.post(
         };
       const invoiceTotals = totals.totals || {
         net: totals.subtotal,
-        tax: totals.taxTotal,
         discount: totals.discountAmount,
         gross: totals.totalDue,
         paid: 0,
@@ -524,7 +521,6 @@ router.post(
         totals: invoiceTotals,
         discount: normalizedDiscount,
         subtotal: totals.subtotal,
-        tax_total: totals.taxTotal,
         total_due: totals.totalDue,
         total_paid: 0,
         balance_due: totals.balanceDue,
@@ -667,7 +663,6 @@ router.put(
       invoice.line_items = lineItems;
       invoice.discount = normalizedDiscount;
       invoice.subtotal = totals.subtotal;
-      invoice.tax_total = totals.taxTotal;
       invoice.total_due = totals.totalDue;
       invoice.balance_due = totals.balanceDue;
       invoice.currency = req.body.currency || invoice.currency;

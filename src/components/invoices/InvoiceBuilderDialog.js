@@ -30,7 +30,6 @@ const defaultLineItem = () => ({
   description: '',
   quantity: 1,
   unit_price: 0,
-  tax_rate: 0,
   discount_amount: 0,
   service_date: '',
   appointment_id: undefined,
@@ -73,7 +72,6 @@ const buildLineItemFromAppointment = (appointment) => ({
   description: appointment.treatment_description || `Appointment ${appointment.appointment_id}`,
   quantity: 1,
   unit_price: resolveAppointmentBalance(appointment),
-  tax_rate: 0,
   discount_amount: 0,
   appointment_id: appointment.appointment_id,
   service_date: formatDateForInput(appointment.date),
@@ -402,7 +400,6 @@ const InvoiceBuilderDialog = ({
       quantity: Number(item.quantity) || 1,
       unit_price: Number(item.unit_price) || 0,
       discount_amount: Number(item.discount_amount) || 0,
-      tax_rate: Number(item.tax_rate) || 0,
     }));
 
     const sanitizedLineItems = mappedLineItems.filter(
@@ -603,7 +600,7 @@ const InvoiceBuilderDialog = ({
                     onChange={(event) => updateLineItem(index, 'unit_price', event.target.value)}
                   />
                 </Grid>
-                <Grid item xs={6} md={2}>
+                <Grid item xs={6} md={3}>
                   <TextField
                     label="Discount"
                     type="number"
@@ -611,15 +608,6 @@ const InvoiceBuilderDialog = ({
                     value={item.discount_amount ?? 0}
                     onChange={(event) => updateLineItem(index, 'discount_amount', event.target.value)}
                     inputProps={{ min: 0, step: 0.01 }}
-                  />
-                </Grid>
-                <Grid item xs={6} md={1}>
-                  <TextField
-                    label="Tax %"
-                    type="number"
-                    fullWidth
-                    value={item.tax_rate}
-                    onChange={(event) => updateLineItem(index, 'tax_rate', event.target.value)}
                   />
                 </Grid>
                 <Grid item xs={12} md={1} display="flex" justifyContent="flex-end">

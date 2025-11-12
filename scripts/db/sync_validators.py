@@ -69,7 +69,6 @@ LINE_ITEM_SCHEMA = {
         "description": string_type(),
         "quantity": number_type(),
         "unit_price": number_type(),
-        "tax_rate": number_type(True),
         "discount_amount": number_type(True),
         "total": number_type(),
         "appointment_id": number_type(True),
@@ -231,7 +230,7 @@ SCHEMAS: Dict[str, Dict[str, Any]] = {
     },
     "invoices": {
         "bsonType": "object",
-        "required": ["invoice_number", "patient_id", "subtotal", "tax_total", "total_due", "balance_due"],
+        "required": ["invoice_number", "patient_id", "subtotal", "total_due", "balance_due"],
         "properties": {
             "_id": object_id(),
             "invoice_id": number_type(True),
@@ -252,7 +251,6 @@ SCHEMAS: Dict[str, Dict[str, Any]] = {
             "totals": {"bsonType": ["object", "null"]},
             "subtotal": number_type(),
             "discount": {"bsonType": ["object", "null"]},
-            "tax_total": number_type(),
             "total_due": number_type(),
             "total_paid": number_type(True),
             "balance_due": number_type(),
@@ -391,7 +389,6 @@ SCHEMAS: Dict[str, Dict[str, Any]] = {
         "properties": {
             "_id": object_id(),
             "branding": {"bsonType": ["object", "null"]},
-            "tax": {"bsonType": ["object", "null"]},
             "invoice_prefix": string_type(True),
             "email_provider": {
                 "bsonType": "string",
