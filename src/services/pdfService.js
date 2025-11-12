@@ -78,6 +78,25 @@ const isServerlessEnvironment = Boolean(
   || process.env.VERCEL,
 );
 
+const DEFAULT_REMOTE_CHROMIUM_URL = 'https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar';
+
+const tryResolveRemoteChromium = async (url, label) => {
+  if (!url) {
+    return null;
+  }
+  try {
+    const executablePath = await chromium.executablePath(url);
+    console.log(`[pdfService] Resolved Chromium via ${label}: ${url}`);
+    return {
+      path: executablePath,
+      useChromiumConfig: true,
+    };
+  } catch (error) {
+    console.warn(`[pdfService] Unable to download Chromium from ${url}: ${error.message}`);
+    return null;
+  }
+};
+
 const resolveExecutable = async () => {
   const localOverride = (chromiumLocalExecutable || '').trim();
   if (localOverride) {
@@ -95,12 +114,9 @@ const resolveExecutable = async () => {
   }
 
   const remoteOverride = (chromiumRemoteExecutable || '').trim();
-  if (remoteOverride) {
-    const remoteExecutablePath = await chromium.executablePath(remoteOverride);
-    return {
-      path: remoteExecutablePath,
-      useChromiumConfig: true,
-    };
+  const remoteFromEnv = await tryResolveRemoteChromium(remoteOverride, 'CHROMIUM_REMOTE_EXEC_PATH');
+  if (remoteFromEnv) {
+    return remoteFromEnv;
   }
 
   if (process.env.CHROMIUM_PATH) {
@@ -110,25 +126,46 @@ const resolveExecutable = async () => {
     };
   }
 
-  if (isServerlessEnvironment || process.platform === 'linux') {
-    return {
-      path: await chromium.executablePath(),
-      useChromiumConfig: true,
-    };
-  }
+  const resolveBundledChromium = async () => ({
+    path: await chromium.executablePath(),
+    useChromiumConfig: true,
+  });
 
-  if (localChromeExecutablePath) {
+  const attemptBundled = async () => {
+    try {
+      return await resolveBundledChromium();
+    } catch (error) {
+      console.warn('[pdfService] Bundled Chromium unavailable', error.message);
+      return null;
+    }
+  };
+
+  if (isServerlessEnvironment || process.platform === 'linux') {
+    const bundled = await attemptBundled();
+    if (bundled) {
+      return bundled;
+    }
+  } else if (localChromeExecutablePath) {
     return {
       path: localChromeExecutablePath,
       useChromiumConfig: false,
     };
   }
 
-  // Fall back to the bundled chromium binary even if it might not be compatible.
-  return {
-    path: await chromium.executablePath(),
-    useChromiumConfig: true,
-  };
+  const remoteFromFallback = await tryResolveRemoteChromium(
+    DEFAULT_REMOTE_CHROMIUM_URL,
+    'default remote',
+  );
+  if (remoteFromFallback) {
+    return remoteFromFallback;
+  }
+
+  const finalBundledAttempt = await attemptBundled();
+  if (finalBundledAttempt) {
+    return finalBundledAttempt;
+  }
+
+  throw new Error('Unable to resolve a Chromium executable for PDF rendering');
 };
 
 const buildLaunchOptions = async () => {
