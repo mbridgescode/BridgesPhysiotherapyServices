@@ -1,4 +1,5 @@
 const express = require('express');
+const { Types } = require('mongoose');
 const Patient = require('../models/patients');
 const Appointment = require('../models/appointments');
 const Communication = require('../models/communications');
@@ -48,6 +49,25 @@ const calculateAge = (value, referenceDate = new Date()) => {
 };
 
 const normalizeBillingMode = (value) => (value === 'monthly' ? 'monthly' : 'individual');
+
+const resolveTherapistRecord = async (identifier) => {
+  if (identifier === undefined || identifier === null || identifier === '') {
+    return null;
+  }
+
+  const trimmed = typeof identifier === 'string' ? identifier.trim() : identifier;
+
+  if (Types.ObjectId.isValid(trimmed)) {
+    return User.findById(trimmed).select('employeeID');
+  }
+
+  const numericIdentifier = toNumberOrUndefined(trimmed);
+  if (numericIdentifier !== undefined) {
+    return User.findOne({ employeeID: numericIdentifier }).select('employeeID');
+  }
+
+  return null;
+};
 
 router.get(
   '/retention/report',
@@ -215,8 +235,8 @@ router.post(
       }
 
       let therapistRecord = null;
-      if (primaryTherapistId) {
-        therapistRecord = await User.findById(primaryTherapistId).select('employeeID');
+      if (primaryTherapistId !== undefined && primaryTherapistId !== null && primaryTherapistId !== '') {
+        therapistRecord = await resolveTherapistRecord(primaryTherapistId);
         if (!therapistRecord) {
           return res.status(400).json({ success: false, message: 'Selected therapist not found' });
         }
@@ -305,7 +325,7 @@ router.put(
             update.primary_therapist_id = undefined;
           }
         } else {
-          const therapistRecord = await User.findById(primaryTherapistId).select('employeeID');
+          const therapistRecord = await resolveTherapistRecord(primaryTherapistId);
           if (!therapistRecord) {
             return res.status(400).json({ success: false, message: 'Selected therapist not found' });
           }
