@@ -25,6 +25,21 @@ const formatDate = (value) => {
   });
 };
 
+const formatLongDate = (value) => {
+  if (!value) {
+    return '';
+  }
+  const asDate = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(asDate.getTime())) {
+    return '';
+  }
+  return asDate.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+};
+
 const escapeHtml = (value = '') =>
   String(value)
     .replace(/&/g, '&amp;')
@@ -119,49 +134,188 @@ const buildLineItems = (invoice, currency) => {
     .join('');
 };
 
-const buildPaymentInstructions = (clinicSettings, invoice) => {
-  const { branding = {}, payment_instructions: paymentInstructions } = clinicSettings || {};
-  if (paymentInstructions?.text) {
-    return escapeHtml(paymentInstructions.text);
+const formatAddressLines = (value) => {
+  if (!value) {
+    return [];
   }
-
-  if (paymentInstructions?.lines?.length) {
-    return paymentInstructions.lines.map((line) => escapeHtml(line)).join('<br />');
+  if (typeof value === 'string') {
+    return value
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
   }
-
-  const namedRecipient = branding.payment_contact || 'Megan Bridges';
-  const phone = branding.phone || '074 5528 5117';
-  const email = branding.email || 'm.bridgespt@gmail.com';
-
-  return [
-    'Please make all payments to:',
-    namedRecipient,
-    'Account Number: 80856460',
-    'Sort Code: 30-92-16',
-  ].join('<br />');
+  if (typeof value === 'object') {
+    const {
+      line1,
+      line2,
+      city,
+      state,
+      postcode,
+      postal_code,
+      country,
+    } = value;
+    return [
+      line1,
+      line2,
+      city,
+      state,
+      postcode || postal_code,
+      country,
+    ].filter(Boolean);
+  }
+  return [];
 };
 
-const renderInvoiceTemplate = ({ invoice, clinicSettings }) => {
+const normalizePaymentInstructionLines = (clinicSettings = {}) => {
+  const instructions = clinicSettings?.payment_instructions;
+  if (instructions?.text) {
+    return instructions.text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+  if (Array.isArray(instructions?.lines) && instructions.lines.length > 0) {
+    return instructions.lines
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+  const branding = clinicSettings?.branding || {};
+  const paymentDetails = branding.payment_details || {};
+  return [
+    'Please make all payments to:',
+    branding.payment_contact || branding.clinic_name || 'Bridges Physiotherapy Services',
+    paymentDetails.bank_name ? `Bank: ${paymentDetails.bank_name}` : null,
+    paymentDetails.sort_code ? `Sort code: ${paymentDetails.sort_code}` : null,
+    paymentDetails.account_number ? `Account number: ${paymentDetails.account_number}` : null,
+    'Reference: invoice number',
+  ].filter(Boolean);
+};
+
+const buildPaymentInstructions = ({
+  clinicSettings,
+  invoice,
+  paymentInstructionLines,
+}) => {
+  const explicitLines = Array.isArray(paymentInstructionLines)
+    ? paymentInstructionLines.map((line) => String(line || '').trim()).filter(Boolean)
+    : [];
+  const resolvedLines = explicitLines.length
+    ? explicitLines
+    : normalizePaymentInstructionLines(clinicSettings);
+  const lines = [...resolvedLines];
+
+  if (invoice?.invoice_number && !lines.some((line) => /reference/i.test(line))) {
+    lines.push(`Reference: ${invoice.invoice_number}`);
+  }
+
+  if (!lines.length) {
+    return '';
+  }
+
+  return lines
+    .map((line, index) => {
+      const safeLine = escapeHtml(line);
+      if (index === 1 && /make all payments/i.test(lines[0] || '')) {
+        return `<strong>${safeLine}</strong>`;
+      }
+      return safeLine;
+    })
+    .join('<br />');
+};
+
+const buildNotesSection = (heading, lines = []) => {
+  const normalized = lines
+    .map((line) => (line === undefined || line === null ? '' : String(line).trim()))
+    .filter(Boolean);
+  if (!normalized.length) {
+    return '';
+  }
+  const safeHeading = escapeHtml(heading || 'Notes');
+  const items = normalized
+    .map((line) => `<div>${escapeHtml(line)}</div>`)
+    .join('');
+  return `
+    <section class="notes-section">
+      <div class="section-heading">${safeHeading}</div>
+      <div class="notes-card">
+        ${items}
+      </div>
+    </section>`;
+};
+
+
+const renderInvoiceTemplate = ({
+  invoice = {},
+  clinicSettings = {},
+  billingContact = {},
+  patient,
+  notesHeading,
+  notesLines,
+  paymentInstructionLines,
+  includeWrapper = true,
+} = {}) => {
   const branding = clinicSettings?.branding || {};
   const currency = invoice?.currency || 'GBP';
   const totals = buildTotals(invoice);
   const clinicName = branding.clinic_name || 'Bridges Physiotherapy Services';
   const logoSrc = branding.logo_url ? escapeHtml(branding.logo_url) : DEFAULT_LOGO_DATA_URI;
-  const billingName = invoice?.billing_contact_name || invoice?.patient_name || 'Valued Client';
-  const billingEmail = invoice?.billing_contact_email || invoice?.patient_email || '';
-  const billingPhone = invoice?.billing_contact_phone || invoice?.patient_phone || '';
+  const billingName = billingContact?.name
+    || invoice?.billing_contact_name
+    || patient?.preferred_name
+    || invoice?.patient_name
+    || 'Valued Client';
+  const billingEmail = billingContact?.email
+    || invoice?.billing_contact_email
+    || patient?.email
+    || invoice?.patient_email
+    || '';
+  const billingPhone = billingContact?.phone
+    || invoice?.billing_contact_phone
+    || patient?.phone
+    || invoice?.patient_phone
+    || '';
   const invoiceDate = formatDate(invoice?.issue_date || new Date());
   const dueDate = formatDate(invoice?.due_date);
   const invoiceNumber = escapeHtml(invoice?.invoice_number || '');
   const amountDue = totals.balance || totals.gross || totals.net || 0;
   const dueText = dueDate ? `Due ${dueDate}` : 'Due on receipt';
+  const clientId = invoice?.client_id || patient?.patient_id || invoice?.patient_id || '-';
+  const addressLines = [
+    ...formatAddressLines(billingContact?.address),
+    ...formatAddressLines(invoice?.billing_contact_address),
+    ...formatAddressLines(patient?.address),
+    ...formatAddressLines(invoice?.patient_address),
+  ].filter(Boolean);
+  const uniqueAddressLines = [...new Set(addressLines)];
+  const billToParts = [
+    `<strong>${escapeHtml(billingName)}</strong>`,
+    billingEmail ? escapeHtml(billingEmail) : null,
+    billingPhone ? escapeHtml(billingPhone) : null,
+    ...uniqueAddressLines.map((line) => escapeHtml(line)),
+    clientId ? `Client ID: ${escapeHtml(String(clientId))}` : null,
+  ].filter(Boolean);
+  const billToHtml = billToParts.join('<br />');
+  const paymentInstructionsHtml = buildPaymentInstructions({
+    clinicSettings,
+    invoice,
+    paymentInstructionLines,
+  });
+  const notesSection = buildNotesSection(notesHeading, notesLines || []);
+  const footerEmail = branding.email || 'm.bridgespt@gmail.com';
+  const footerPhone = branding.phone || '074 5528 5117';
+  const paymentSectionHtml = paymentInstructionsHtml
+    ? `
+        <section class='payment-section'>
+          <div class='section-heading'>Payment details</div>
+          <div class='payment-card'>
+            <div class='payment-instructions'>
+              ${paymentInstructionsHtml}
+            </div>
+          </div>
+        </section>`
+    : '';
 
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Invoice ${invoiceNumber}</title>
-    <style>
+  const styles = `
       @page {
         size: A4;
         margin: 0;
@@ -345,18 +499,20 @@ const renderInvoiceTemplate = ({ invoice, clinicSettings }) => {
       }
 
       .line-items tr.line-total td.total-label span {
-        text-transform: none;
-        letter-spacing: normal;
-        font-size: 11px;
+        display: block;
+        font-size: 12px;
         color: #94a3b8;
-        margin-left: 10px;
-        font-weight: 400;
+        margin-top: 4px;
       }
 
       .line-items tr.line-total td.total-value {
         font-size: 18px;
-        font-weight: 600;
-        color: #1f3e82;
+        font-weight: 700;
+        color: #101738;
+      }
+
+      .cell {
+        padding: 12px 14px;
       }
 
       .cell.index {
@@ -397,7 +553,7 @@ const renderInvoiceTemplate = ({ invoice, clinicSettings }) => {
       }
 
       .payment-section {
-        padding: 16px 56px 40px;
+        padding: 16px 56px 32px;
       }
 
       .payment-card {
@@ -407,6 +563,23 @@ const renderInvoiceTemplate = ({ invoice, clinicSettings }) => {
         padding: 20px 24px;
         line-height: 1.8;
         color: #1b2134;
+      }
+
+      .notes-section {
+        padding: 0 56px 32px;
+      }
+
+      .notes-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
+        padding: 16px 20px;
+        color: #1b2134;
+        line-height: 1.6;
+      }
+
+      .notes-card div + div {
+        margin-top: 8px;
       }
 
       .invoice-footer {
@@ -421,114 +594,122 @@ const renderInvoiceTemplate = ({ invoice, clinicSettings }) => {
         color: #cbd5f5;
         margin: 0 10px;
       }
-    </style>
-  </head>
-  <body>
-    <div class="invoice-wrapper">
-      <main class="invoice-card">
-        <section class="masthead">
-          <div class="brand-block">
-            <div class="brand-logo">
-              <img src="${logoSrc}" alt="${escapeHtml(`${clinicName} logo`)}" />
+    `;
+
+  const invoiceMarkup = `
+    <div class='invoice-wrapper'>
+      <main class='invoice-card'>
+        <section class='masthead'>
+          <div class='brand-block'>
+            <div class='brand-logo'>
+              <img src='${logoSrc}' alt='${escapeHtml(`${clinicName} logo`)}' />
             </div>
-            <div class="brand-info">
-              <div class="brand-name">${escapeHtml(clinicName)}</div>
-              <div class="brand-details">
+            <div class='brand-info'>
+              <div class='brand-name'>${escapeHtml(clinicName)}</div>
+              <div class='brand-details'>
                 ${branding.address ? `${escapeHtml(branding.address)}<br />` : ''}
                 ${branding.phone ? `${escapeHtml(branding.phone)}<br />` : ''}
                 ${
                   branding.email
-                    ? `<a href="mailto:${escapeHtml(branding.email)}" style="color:#1f3e82;text-decoration:none;">${escapeHtml(branding.email)}</a>`
+                    ? `<a href='mailto:${escapeHtml(branding.email)}' style='color:#1f3e82;text-decoration:none;'>${escapeHtml(branding.email)}</a>`
                     : ''
                 }
                 ${
                   branding.website
-                    ? `<br /><a href="${escapeHtml(branding.website)}" style="color:#1f3e82;text-decoration:none;">${escapeHtml(branding.website)}</a>`
+                    ? `<br /><a href='${escapeHtml(branding.website)}' style='color:#1f3e82;text-decoration:none;'>${escapeHtml(branding.website)}</a>`
                     : ''
                 }
               </div>
             </div>
           </div>
-          <div class="meta-block">
-            <div class="meta-item">
-              <div class="meta-label">Issue Date</div>
-              <div class="meta-value">${invoiceDate || '-'}</div>
+          <div class='meta-block'>
+            <div class='meta-item'>
+              <div class='meta-label'>Issue Date</div>
+              <div class='meta-value'>${invoiceDate || '-'}</div>
             </div>
-            <div class="meta-item">
-              <div class="meta-label">Invoice Number</div>
-              <div class="meta-value">${invoiceNumber || '-'}</div>
+            <div class='meta-item'>
+              <div class='meta-label'>Invoice Number</div>
+              <div class='meta-value'>${invoiceNumber || '-'}</div>
             </div>
-            <div class="meta-item">
-              <div class="meta-label">Due Date</div>
-              <div class="meta-value">${dueDate || 'Due on receipt'}</div>
-            </div>
-          </div>
-        </section>
-
-        <section class="info-band">
-          <div class="info-block">
-            <div class="info-title">Bill To</div>
-            <div class="info-text">
-              <strong>${escapeHtml(billingName)}</strong><br />
-              ${billingEmail ? `${escapeHtml(billingEmail)}<br />` : ''}
-              ${billingPhone ? `${escapeHtml(billingPhone)}<br />` : ''}
-              ${invoice?.billing_contact_address ? `${escapeHtml(invoice.billing_contact_address)}<br />` : ''}
-              ${invoice?.patient_address ? `${escapeHtml(invoice.patient_address)}<br />` : ''}
-              Client ID: ${escapeHtml(String(invoice?.client_id || invoice?.patient_id || '-'))}
+            <div class='meta-item'>
+              <div class='meta-label'>Due Date</div>
+              <div class='meta-value'>${dueDate || 'Due on receipt'}</div>
             </div>
           </div>
         </section>
 
-        <section class="items-section">
-          <div class="section-heading">Services</div>
-          <table class="line-items">
+        <section class='info-band'>
+          <div class='info-block'>
+            <div class='info-title'>Bill To</div>
+            <div class='info-text'>
+              ${billToHtml}
+            </div>
+          </div>
+        </section>
+
+        <section class='items-section'>
+          <div class='section-heading'>Services</div>
+          <table class='line-items'>
             <thead>
               <tr>
-                <th style="width:40px;">#</th>
+                <th style='width:40px;'>#</th>
                 <th>Product details</th>
-                <th style="text-align:right;">Price</th>
-                <th style="text-align:center;">Qty.</th>
-                <th style="text-align:center;">Tax</th>
-                <th style="text-align:right;">Discount</th>
-                <th style="text-align:right;">Amount</th>
+                <th style='text-align:right;'>Price</th>
+                <th style='text-align:center;'>Qty.</th>
+                <th style='text-align:center;'>Tax</th>
+                <th style='text-align:right;'>Discount</th>
+                <th style='text-align:right;'>Amount</th>
               </tr>
             </thead>
             <tbody>
               ${buildLineItems(invoice, currency)}
-              <tr class="line-total">
-                <td colspan="6" class="cell total-label">
+              <tr class='line-total'>
+                <td colspan='6' class='cell total-label'>
                   Amount Due <span>${dueText}</span>
                 </td>
-                <td class="cell number total-value">${formatCurrency(amountDue, currency)}</td>
+                <td class='cell number total-value'>${formatCurrency(amountDue, currency)}</td>
               </tr>
             </tbody>
           </table>
         </section>
 
-        <section class="payment-section">
-          <div class="section-heading">Payment details</div>
-          <div class="payment-card">
-            <div class="payment-instructions">
-              ${buildPaymentInstructions(clinicSettings, invoice)}
-            </div>
-          </div>
-        </section>
+        ${paymentSectionHtml}
+        ${notesSection}
 
-        <footer class="invoice-footer">
+        <footer class='invoice-footer'>
           ${escapeHtml(clinicName)}
-          <span class="divider">|</span>
-          ${branding.email ? escapeHtml(branding.email) : 'm.bridgespt@gmail.com'}
-          <span class="divider">|</span>
-          ${branding.phone ? escapeHtml(branding.phone) : '074 5528 5117'}
+          <span class='divider'>|</span>
+          ${escapeHtml(footerEmail)}
+          <span class='divider'>|</span>
+          ${escapeHtml(footerPhone)}
         </footer>
       </main>
-    </div>
+    </div>`;
+
+  if (!includeWrapper) {
+    return `<style>${styles}</style>${invoiceMarkup}`;
+  }
+
+  return `<!doctype html>
+<html lang='en'>
+  <head>
+    <meta charset='utf-8' />
+    <title>Invoice ${invoiceNumber}</title>
+    <style>
+${styles}
+    </style>
+  </head>
+  <body>
+    ${invoiceMarkup}
   </body>
 </html>`;
 };
 
 module.exports = {
   renderInvoiceTemplate,
+  normalizePaymentInstructionLines,
+  formatCurrency,
+  formatLongDate,
 };
 const DEFAULT_LOGO_SVG = `<svg width="320" height="90" viewBox="0 0 320 90" xmlns="http://www.w3.org/2000/svg">
   <path d="M10 70 Q50 15 90 70" stroke="#1F3E82" stroke-width="12" stroke-linecap="round" fill="none"/>
