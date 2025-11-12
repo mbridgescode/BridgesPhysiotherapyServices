@@ -2,7 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium');
+const chromium = require('@sparticuz/chromium-min');
 
 let localChromeExecutablePath = null;
 try {
@@ -17,8 +17,13 @@ try {
   localChromeExecutablePath = null;
 }
 
-const { invoiceStoragePath, pdfTempPath } = require('../config/env');
-const { renderInvoiceTemplate } = require('../templates/invoiceTemplate');
+const {
+  invoiceStoragePath,
+  pdfTempPath,
+  chromiumRemoteExecutable,
+  chromiumLocalExecutable,
+} = require('../config/env');
+const { renderTemplidInvoice } = require('../templates/invoice/templidInvoice');
 
 const ensureDirectory = (dirPath) => {
   if (!dirPath) {
@@ -74,10 +79,27 @@ const isServerlessEnvironment = Boolean(
 );
 
 const resolveExecutable = async () => {
+  const localOverride = (chromiumLocalExecutable || '').trim();
+  if (localOverride) {
+    return {
+      path: localOverride,
+      useChromiumConfig: false,
+    };
+  }
+
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
     return {
       path: process.env.PUPPETEER_EXECUTABLE_PATH,
       useChromiumConfig: false,
+    };
+  }
+
+  const remoteOverride = (chromiumRemoteExecutable || '').trim();
+  if (remoteOverride) {
+    const remoteExecutablePath = await chromium.executablePath(remoteOverride);
+    return {
+      path: remoteExecutablePath,
+      useChromiumConfig: true,
     };
   }
 
@@ -102,7 +124,7 @@ const resolveExecutable = async () => {
     };
   }
 
-  // Fall back to the chromium binary even if it might not be compatible.
+  // Fall back to the bundled chromium binary even if it might not be compatible.
   return {
     path: await chromium.executablePath(),
     useChromiumConfig: true,
@@ -116,12 +138,15 @@ const buildLaunchOptions = async () => {
     executablePath,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
     headless: 'new',
+    ignoreHTTPSErrors: true,
   };
 
   if (useChromiumConfig) {
     baseOptions.args = chromium.args;
-    baseOptions.defaultViewport = chromium.defaultViewport;
+    baseOptions.defaultViewport = chromium.defaultViewport || null;
     baseOptions.headless = chromium.headless ?? 'new';
+  } else if (!baseOptions.defaultViewport) {
+    baseOptions.defaultViewport = { width: 1280, height: 720 };
   }
 
   return baseOptions;
@@ -165,12 +190,59 @@ const waitForContent = async (page) => {
   }
 };
 
+const buildBillingContact = (invoice = {}) => ({
+  name: invoice.billing_contact_name || invoice.billingContact?.name || '',
+  email: invoice.billing_contact_email || invoice.billingContact?.email || '',
+  phone: invoice.billing_contact_phone || invoice.billingContact?.phone || '',
+});
+
+const buildPatientSummary = (invoice = {}) => {
+  const preferredName = invoice.patient_name
+    || invoice.patient?.preferred_name
+    || invoice.patient?.first_name;
+  const email = invoice.patient_email || invoice.patient?.email;
+  const phone = invoice.patient_phone || invoice.patient?.phone;
+  const patientId = invoice.patient_id || invoice.patient?.patient_id;
+
+  if (!preferredName && !email && !phone && !patientId) {
+    return null;
+  }
+
+  return {
+    preferred_name: preferredName,
+    email,
+    phone,
+    patient_id: patientId,
+  };
+};
+
+const buildNotesLines = (invoice = {}) => {
+  if (!invoice.notes) {
+    return undefined;
+  }
+  return String(invoice.notes)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+};
+
 const generateInvoicePdf = async ({ invoice, clinicSettings }) => {
   const persistDirectory = resolvePersistDirectory();
 
   const filename = `${invoice.invoice_number}.pdf`;
   const targetPath = persistDirectory ? path.join(persistDirectory, filename) : null;
-  const html = renderInvoiceTemplate({ invoice, clinicSettings });
+  const billingContact = buildBillingContact(invoice);
+  const patientSummary = buildPatientSummary(invoice);
+  const notesLines = buildNotesLines(invoice);
+  const html = renderTemplidInvoice({
+    invoice,
+    clinicSettings,
+    billingContact,
+    patient: patientSummary || undefined,
+    notesHeading: notesLines?.length ? 'Notes' : undefined,
+    notesLines,
+    includeWrapper: true,
+  });
 
   const browser = await getBrowser();
   const page = await browser.newPage();

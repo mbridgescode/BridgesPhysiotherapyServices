@@ -129,6 +129,8 @@ module.exports = {
     || path.join(storageRoot, 'invoices'),
   pdfTempPath: process.env.PDF_TEMP_PATH
     || path.join(storageRoot, 'tmp'),
+  chromiumRemoteExecutable: process.env.CHROMIUM_REMOTE_EXEC_PATH || '',
+  chromiumLocalExecutable: process.env.CHROMIUM_LOCAL_EXEC_PATH || '',
   dataEncryptionKey: assertEnv('DATA_ENCRYPTION_KEY', process.env.DATA_ENCRYPTION_KEY),
   enforceHttps: process.env.ENFORCE_HTTPS
     ? process.env.ENFORCE_HTTPS.toLowerCase() !== 'false'
