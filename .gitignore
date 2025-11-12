@@ -39,3 +39,6 @@ mongodb_playground.py
 
 # Generated database artifacts
 apply_validators_commands.json
+
+# Generated Chromium bundle
+public/chromium-pack.tar

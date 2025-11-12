@@ -80,21 +80,58 @@ const isServerlessEnvironment = Boolean(
 
 const DEFAULT_REMOTE_CHROMIUM_URL = 'https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar';
 
-const tryResolveRemoteChromium = async (url, label) => {
-  if (!url) {
+const normalizeArchiveLocation = (value) => {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('file://')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('/')) {
+    return `file://${trimmed}`;
+  }
+  return `file://${path.resolve(process.cwd(), trimmed)}`;
+};
+
+const tryResolveChromiumArchive = async (location, label) => {
+  const normalizedLocation = normalizeArchiveLocation(location);
+  if (!normalizedLocation) {
     return null;
   }
   try {
-    const executablePath = await chromium.executablePath(url);
-    console.log(`[pdfService] Resolved Chromium via ${label}: ${url}`);
+    const executablePath = await chromium.executablePath(normalizedLocation);
+    console.log(`[pdfService] Resolved Chromium via ${label}: ${normalizedLocation}`);
     return {
       path: executablePath,
       useChromiumConfig: true,
     };
   } catch (error) {
-    console.warn(`[pdfService] Unable to download Chromium from ${url}: ${error.message}`);
+    console.warn(`[pdfService] Unable to load Chromium from ${label}: ${error.message}`);
     return null;
   }
+};
+
+const resolveHostedChromiumArchive = () => {
+  const envUrl = normalizeArchiveLocation(process.env.CHROMIUM_PACK_URL || '');
+  if (envUrl) {
+    return envUrl;
+  }
+
+  if (process.env.VERCEL_URL) {
+    const baseHost = process.env.VERCEL_URL.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+    return `https://${baseHost}/chromium-pack.tar`;
+  }
+
+  const localPackPath = path.join(process.cwd(), 'public', 'chromium-pack.tar');
+  if (fs.existsSync(localPackPath)) {
+    return localPackPath;
+  }
+
+  return null;
 };
 
 const resolveExecutable = async () => {
@@ -114,7 +151,7 @@ const resolveExecutable = async () => {
   }
 
   const remoteOverride = (chromiumRemoteExecutable || '').trim();
-  const remoteFromEnv = await tryResolveRemoteChromium(remoteOverride, 'CHROMIUM_REMOTE_EXEC_PATH');
+  const remoteFromEnv = await tryResolveChromiumArchive(remoteOverride, 'CHROMIUM_REMOTE_EXEC_PATH');
   if (remoteFromEnv) {
     return remoteFromEnv;
   }
@@ -152,7 +189,14 @@ const resolveExecutable = async () => {
     };
   }
 
-  const remoteFromFallback = await tryResolveRemoteChromium(
+  const hostedArchive = resolveHostedChromiumArchive();
+  const hostedLabel = process.env.VERCEL_URL ? 'hosted chromium pack' : 'local chromium pack';
+  const hostedExecutable = await tryResolveChromiumArchive(hostedArchive, hostedLabel);
+  if (hostedExecutable) {
+    return hostedExecutable;
+  }
+
+  const remoteFromFallback = await tryResolveChromiumArchive(
     DEFAULT_REMOTE_CHROMIUM_URL,
     'default remote',
   );
