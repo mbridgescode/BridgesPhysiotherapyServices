@@ -100,17 +100,19 @@ const buildInvoiceSummaryHtml = ({
 }) => {
   const issueDate = formatFriendlyDate(invoice.issue_date) || 'Issued today';
   return `
-    <div style="margin:18px 0;padding:18px 22px;border:1px solid rgba(148,163,184,0.4);border-radius:18px;background:rgba(99,102,241,0.04);">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;">
-        <div>
-          <div style="text-transform:uppercase;letter-spacing:0.08em;font-size:12px;color:#475569;">Amount due</div>
-          <div style="font-size:28px;font-weight:700;color:#0f172a;">${highlightValue}</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:15px;font-weight:600;color:#0f172a;">${escapeHtml(dueDateText)}</div>
-          <div style="color:#64748b;font-size:13px;">Due date</div>
-        </div>
-      </div>
+    <div class="card-spacing" style="margin:18px 0;padding:18px 22px;border:1px solid rgba(148,163,184,0.4);border-radius:18px;background:rgba(99,102,241,0.04);">
+      <table width="100%" cellpadding="0" cellspacing="0" class="stack-sm" style="border-collapse:collapse;">
+        <tr>
+          <td style="padding:0 0 12px;">
+            <div style="text-transform:uppercase;letter-spacing:0.08em;font-size:12px;color:#475569;">Amount due</div>
+            <div style="font-size:28px;font-weight:700;color:#0f172a;">${highlightValue}</div>
+          </td>
+          <td style="padding:0 0 12px;text-align:right;">
+            <div style="font-size:15px;font-weight:600;color:#0f172a;">${escapeHtml(dueDateText)}</div>
+            <div style="color:#64748b;font-size:13px;">Due date</div>
+          </td>
+        </tr>
+      </table>
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;border-collapse:collapse;color:#0f172a;font-size:14px;">
         <tr>
           <td style="padding:8px 0;color:#64748b;width:160px;">Invoice number</td>
@@ -136,9 +138,9 @@ const buildPaymentInstructionsHtml = (lines = []) => {
     .map((line) => `<li style="margin-bottom:6px;">${escapeHtml(line)}</li>`)
     .join('');
   return `
-    <div style="margin-top:16px;padding:16px 18px;border:1px solid rgba(148,163,184,0.35);border-radius:16px;">
+    <div class="card-spacing" style="margin-top:16px;padding:16px 18px;border:1px solid rgba(148,163,184,0.35);border-radius:16px;">
       <strong style="display:block;margin-bottom:8px;color:#0f172a;">Payment instructions</strong>
-      <ul style="margin:0;padding-left:18px;color:#475569;line-height:1.6;">${items}</ul>
+      <ul style="margin:0;padding-left:20px;color:#475569;line-height:1.6;">${items}</ul>
     </div>`;
 };
 
@@ -148,7 +150,7 @@ const buildNotesHtml = (heading, lines = []) => {
     return '';
   }
   return `
-    <div style="margin-top:16px;padding:16px 18px;background:rgba(15,23,42,0.04);border-radius:16px;">
+    <div class="card-spacing" style="margin-top:16px;padding:16px 18px;background:rgba(15,23,42,0.04);border-radius:16px;">
       <strong style="display:block;margin-bottom:8px;color:#0f172a;">${escapeHtml(heading || 'Notes')}</strong>
       <div style="color:#475569;line-height:1.6;">
         ${filtered.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}

@@ -44,6 +44,30 @@ const renderEmailTemplate = ({
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(heading || 'Message')}</title>
+    <style>
+      @media only screen and (max-width: 600px) {
+        .email-wrapper {
+          padding: 20px 0 !important;
+        }
+        .email-container {
+          width: 100% !important;
+          margin: 0 !important;
+          border-radius: 0 !important;
+        }
+        .email-content {
+          padding: 20px !important;
+        }
+        .stack-sm,
+        .stack-sm tr,
+        .stack-sm td {
+          display: block !important;
+          width: 100% !important;
+        }
+        .card-spacing {
+          padding: 16px !important;
+        }
+      }
+    </style>
   </head>
   <body style="margin:0;padding:0;background:#eef2ff;">
     ${
@@ -51,10 +75,10 @@ const renderEmailTemplate = ({
         ? `<div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(previewText)}</div>`
         : ''
     }
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="email-wrapper" style="padding:32px 12px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:18px;box-shadow:0 20px 45px rgba(15,23,42,0.08);overflow:hidden;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="email-container" style="max-width:600px;background:#ffffff;border-radius:18px;box-shadow:0 20px 45px rgba(15,23,42,0.08);overflow:hidden;">
             <tr>
               <td style="background:${accent};padding:24px 28px;">
                 <h1 style="margin:0;font-size:24px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;">${escapeHtml(
@@ -70,7 +94,7 @@ const renderEmailTemplate = ({
               </td>
             </tr>
             <tr>
-              <td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:${textColor};font-size:15px;line-height:1.7;">
+              <td class="email-content" style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:${textColor};font-size:15px;line-height:1.7;">
                 ${content}
                 ${buttonHtml}
                 ${footerHtml}
