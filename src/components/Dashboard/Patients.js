@@ -1,6 +1,12 @@
 // src/components/Dashboard/Patients.js
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Box,
   Card,
@@ -20,6 +26,10 @@ import {
   MenuItem,
   Alert,
   Snackbar,
+  FormControlLabel,
+  Switch,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import { makeStyles } from '@mui/styles';
 import { useNavigate } from 'react-router-dom';
@@ -105,6 +115,7 @@ const createEmptyFormState = () => ({
   date_of_birth: '',
   primaryTherapistId: '',
   billing_mode: 'individual',
+  email_active: true,
 });
 
 const Patients = ({ userData }) => {
@@ -120,14 +131,25 @@ const Patients = ({ userData }) => {
   const [submitting, setSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
-  const [submitSuccess, setSubmitSuccess] = useState('');
+  const [toast, setToast] = useState({ message: '', severity: 'success' });
   const [deleteCandidate, setDeleteCandidate] = useState(null);
   const [deletingPatient, setDeletingPatient] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const { therapists, loading: therapistsLoading, error: therapistsError } = useTherapists();
   const [formState, setFormState] = useState(() => createEmptyFormState());
+  const [patientScope, setPatientScope] = useState(userData?.role === 'therapist' ? 'mine' : 'all');
+  const [emailToggleBusy, setEmailToggleBusy] = useState({});
   const navigate = useNavigate();
+  const roleRef = useRef(userData?.role);
   const therapistOptions = useMemo(() => therapists, [therapists]);
+
+  const showToast = useCallback((message, severity = 'success') => {
+    if (!message) {
+      setToast((prev) => ({ ...prev, message: '' }));
+      return;
+    }
+    setToast({ message, severity });
+  }, []);
   const therapistNameByEmployeeOrId = useMemo(() => {
     const map = new Map();
     therapistOptions.forEach((therapist) => {
@@ -165,6 +187,17 @@ const Patients = ({ userData }) => {
   }, []);
 
   useEffect(() => {
+    const previousRole = roleRef.current;
+    const currentRole = userData?.role;
+    if (currentRole === 'therapist' && previousRole !== 'therapist') {
+      setPatientScope('mine');
+    } else if (currentRole !== 'therapist' && patientScope !== 'all') {
+      setPatientScope('all');
+    }
+    roleRef.current = currentRole;
+  }, [userData?.role, patientScope]);
+
+  useEffect(() => {
     let isMounted = true;
 
     const fetchPatients = async () => {
@@ -177,7 +210,11 @@ const Patients = ({ userData }) => {
 
       setLoading(true);
       try {
-        const response = await apiClient.get('/api/patients');
+        const params = {};
+        if (patientScope === 'all') {
+          params.view = 'all';
+        }
+        const response = await apiClient.get('/api/patients', { params });
         if (isMounted) {
           setPatients(response.data.patients || []);
           setError(null);
@@ -199,7 +236,7 @@ const Patients = ({ userData }) => {
     return () => {
       isMounted = false;
     };
-  }, [token]);
+  }, [token, patientScope]);
 
   useEffect(() => {
     if (!formOpen) {
@@ -302,6 +339,45 @@ const Patients = ({ userData }) => {
 
   const canManagePatients = ['admin', 'receptionist'].includes(userData?.role);
   const canDeletePatients = userData?.role === 'admin';
+  const canToggleEmailActive = ['admin', 'receptionist', 'therapist'].includes(userData?.role);
+
+  const handleEmailActiveToggle = useCallback(async (patient, nextValue) => {
+    if (!patient) {
+      return;
+    }
+    setEmailToggleBusy((prev) => ({ ...prev, [patient.patient_id]: true }));
+    try {
+      const response = await apiClient.put(`/api/patients/${patient.patient_id}`, {
+        email_active: nextValue,
+      });
+      const updatedPatient = response?.data?.patient;
+      if (updatedPatient) {
+        setPatients((prev) =>
+          prev.map((existing) =>
+            existing.patient_id === updatedPatient.patient_id ? updatedPatient : existing,
+          ),
+        );
+      } else {
+        setPatients((prev) =>
+          prev.map((existing) =>
+            existing.patient_id === patient.patient_id
+              ? { ...existing, email_active: nextValue }
+              : existing,
+          ),
+        );
+      }
+      showToast(`Email ${nextValue ? 'activated' : 'deactivated'} for ${patient.first_name || 'patient'}.`);
+    } catch (err) {
+      console.error('Failed to update email preference', err);
+      showToast('Failed to update email preference', 'error');
+    } finally {
+      setEmailToggleBusy((prev) => {
+        const nextState = { ...prev };
+        delete nextState[patient.patient_id];
+        return nextState;
+      });
+    }
+  }, [setPatients, showToast]);
 
   const formatPrimaryTherapist = useCallback((row) => {
     if (row.primaryTherapist?.username) {
@@ -370,6 +446,7 @@ const Patients = ({ userData }) => {
         return therapistId ? String(therapistId) : '';
       })(),
       billing_mode: patient.billing_mode || 'individual',
+      email_active: patient.email_active !== false,
     });
     setFormOpen(true);
   };
@@ -421,6 +498,21 @@ const Patients = ({ userData }) => {
         const status = normalizedStatus(row.status);
         return status === 'archived' ? 'Archived' : 'Active';
       },
+    },
+    {
+      id: 'email_active',
+      label: 'Email Active',
+      minWidth: 150,
+      sortable: false,
+      filterable: false,
+      render: (row) => (
+        <Switch
+          size="small"
+          checked={row.email_active !== false}
+          onChange={(event) => handleEmailActiveToggle(row, event.target.checked)}
+          disabled={!canToggleEmailActive || Boolean(emailToggleBusy[row.patient_id])}
+        />
+      ),
     },
     {
       id: 'billing_mode',
@@ -535,6 +627,7 @@ const Patients = ({ userData }) => {
         primary_contact_phone: formState.primary_contact_phone.trim() || undefined,
       };
       payload.billing_mode = formState.billing_mode || 'individual';
+      payload.email_active = formState.email_active !== false;
       const addressPayload = {
         line1: formState.address_line1.trim(),
         line2: formState.address_line2.trim(),
@@ -572,13 +665,13 @@ const Patients = ({ userData }) => {
             ),
           );
         }
-        setSubmitSuccess('Patient updated successfully');
+        showToast('Patient updated successfully');
       } else {
         response = await apiClient.post('/api/patients', payload);
         if (response?.data?.patient) {
           setPatients((prev) => [response.data.patient, ...prev]);
         }
-        setSubmitSuccess('Patient added successfully');
+        showToast('Patient added successfully');
       }
       setFormOpen(false);
       setFormErrors({});
@@ -620,7 +713,7 @@ const Patients = ({ userData }) => {
       } else {
         setPatients((prev) => prev.filter((patient) => patient.patient_id !== deleteCandidate.patient_id));
       }
-      setSubmitSuccess('Patient archived successfully');
+      showToast('Patient archived successfully');
       setDeleteCandidate(null);
     } catch (err) {
       const message = err?.response?.data?.message || 'Failed to delete patient';
@@ -659,6 +752,23 @@ const Patients = ({ userData }) => {
           )}
         </Box>
         <Divider />
+        {userData?.role === 'therapist' && (
+          <Box display="flex" justifyContent="flex-end" sx={{ mt: 2, mb: 1 }}>
+            <ToggleButtonGroup
+              size="small"
+              value={patientScope}
+              exclusive
+              onChange={(event, value) => {
+                if (value) {
+                  setPatientScope(value);
+                }
+              }}
+            >
+              <ToggleButton value="mine">My patients</ToggleButton>
+              <ToggleButton value="all">All patients</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        )}
         <TextField
           label="Search"
           variant="outlined"
@@ -954,6 +1064,19 @@ const Patients = ({ userData }) => {
                 ))}
               </TextField>
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={formState.email_active !== false}
+                    onChange={(event) =>
+                      setFormState((prev) => ({ ...prev, email_active: event.target.checked }))
+                    }
+                  />
+                )}
+                label="Email Active"
+              />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -1009,13 +1132,17 @@ const Patients = ({ userData }) => {
         </DialogActions>
       </Dialog>
       <Snackbar
-        open={Boolean(submitSuccess)}
+        open={Boolean(toast.message)}
         autoHideDuration={4000}
-        onClose={() => setSubmitSuccess('')}
+        onClose={() => setToast((prev) => ({ ...prev, message: '' }))}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="success" onClose={() => setSubmitSuccess('')} sx={{ width: '100%' }}>
-          {submitSuccess}
+        <Alert
+          severity={toast.severity}
+          onClose={() => setToast((prev) => ({ ...prev, message: '' }))}
+          sx={{ width: '100%' }}
+        >
+          {toast.message}
         </Alert>
       </Snackbar>
       </Card>

@@ -50,6 +50,22 @@ const calculateAge = (value, referenceDate = new Date()) => {
 
 const normalizeBillingMode = (value) => (value === 'monthly' ? 'monthly' : 'individual');
 
+const toBooleanOrUndefined = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on', 'active'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'off', 'inactive'].includes(normalized)) {
+      return false;
+    }
+  }
+  return Boolean(value);
+};
+
 const resolveTherapistRecord = async (identifier) => {
   if (identifier === undefined || identifier === null || identifier === '') {
     return null;
@@ -117,6 +133,7 @@ router.get(
         status,
         assignedTo,
         limit = 100,
+        view,
       } = req.query;
 
       const query = {};
@@ -140,7 +157,10 @@ router.get(
         query.searchTokens = { $all: searchTokens };
       }
 
-      const scopeQuery = buildPatientScopeQuery(req.user);
+      const normalizedView = typeof view === 'string' ? view.toLowerCase() : '';
+      const therapistViewingAll = req.user.role === 'therapist' && normalizedView === 'all';
+
+      const scopeQuery = therapistViewingAll ? null : buildPatientScopeQuery(req.user);
       if (scopeQuery) {
         query.$and = [...(query.$and || []), scopeQuery];
       }
@@ -202,7 +222,7 @@ router.get(
         };
       }));
 
-      const scopedResult = req.user.role === 'admin'
+      const scopedResult = (req.user.role === 'admin' || therapistViewingAll)
         ? result
         : result.filter((patient) => userCanAccessPatient(patient, req.user));
 
@@ -250,6 +270,8 @@ router.post(
       };
 
       payload.billing_mode = normalizeBillingMode(payload.billing_mode);
+      const emailActiveValue = toBooleanOrUndefined(body.email_active);
+      payload.email_active = emailActiveValue ?? true;
 
       if (therapistRecord) {
         payload.primaryTherapist = therapistRecord._id;
@@ -304,6 +326,11 @@ router.put(
         ...body,
         updatedBy: req.user.id,
       };
+
+      const emailActiveValue = toBooleanOrUndefined(body.email_active);
+      if (emailActiveValue !== undefined) {
+        update.email_active = emailActiveValue;
+      }
 
       if (body.billing_mode !== undefined) {
         update.billing_mode = normalizeBillingMode(body.billing_mode);

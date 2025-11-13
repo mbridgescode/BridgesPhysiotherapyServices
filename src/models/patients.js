@@ -61,6 +61,10 @@ const PatientSchema = new mongoose.Schema({
     trim: true,
     normalize: (value) => value.toLowerCase(),
   }),
+  email_active: {
+    type: Boolean,
+    default: true,
+  },
   phone: encryptedStringField({
     required: true,
     trim: true,
