@@ -81,6 +81,33 @@ const COMPLETION_OUTCOME_OPTIONS = [
   { value: 'other', label: 'Other (add note)' },
 ];
 
+const extractDateParts = (value) => {
+  if (!value) {
+    return { date: '', time: '' };
+  }
+  const dateValue = new Date(value);
+  if (Number.isNaN(dateValue.getTime())) {
+    return { date: '', time: '' };
+  }
+  const pad = (input) => String(input).padStart(2, '0');
+  return {
+    date: `${dateValue.getFullYear()}-${pad(dateValue.getMonth() + 1)}-${pad(dateValue.getDate())}`,
+    time: `${pad(dateValue.getHours())}:${pad(dateValue.getMinutes())}`,
+  };
+};
+
+const createEmptyEditValues = () => ({
+  date: '',
+  time: '',
+  location: '',
+  room: '',
+  treatment_description: '',
+  treatment_count: 1,
+  price: '',
+  therapistId: '',
+  employeeID: '',
+});
+
 const formatStatusLabel = (status) => {
   if (!status) {
     return 'Scheduled';
@@ -147,6 +174,14 @@ const Appointments = ({ userData }) => {
   const [manualInvoiceDialog, setManualInvoiceDialog] = useState({
     open: false,
     appointment: null,
+  });
+  const [editDialog, setEditDialog] = useState({
+    open: false,
+    appointment: null,
+    values: createEmptyEditValues(),
+    errors: {},
+    submitError: '',
+    submitting: false,
   });
 
   useEffect(() => {
@@ -282,6 +317,190 @@ const Appointments = ({ userData }) => {
       closeManualInvoiceDialog();
     }
   }, [closeManualInvoiceDialog, manualInvoiceDialog.appointment, performCompletionUpdate]);
+
+  const closeEditDialog = useCallback(() => {
+    setEditDialog({
+      open: false,
+      appointment: null,
+      values: createEmptyEditValues(),
+      errors: {},
+      submitError: '',
+      submitting: false,
+    });
+  }, []);
+
+  const openEditDialog = useCallback((appointment) => {
+    if (!appointment) {
+      return;
+    }
+    const { date, time } = extractDateParts(appointment.date);
+    const therapistIdValue = appointment.therapist?._id
+      || appointment.therapist
+      || appointment.therapistId
+      || '';
+    setEditDialog({
+      open: true,
+      appointment,
+      submitting: false,
+      submitError: '',
+      errors: {},
+      values: {
+        ...createEmptyEditValues(),
+        date,
+        time,
+        location: appointment.location || '',
+        room: appointment.room || '',
+        treatment_description: appointment.treatment_description || '',
+        treatment_count: appointment.treatment_count ?? 1,
+        price: appointment.price ?? '',
+        therapistId: therapistIdValue ? String(therapistIdValue) : '',
+        employeeID: appointment.employeeID ?? '',
+      },
+    });
+  }, []);
+
+  const handleEditFieldChange = useCallback((field, value) => {
+    setEditDialog((prev) => ({
+      ...prev,
+      values: {
+        ...prev.values,
+        [field]: value,
+      },
+      errors: {
+        ...prev.errors,
+        [field]: undefined,
+      },
+      submitError: '',
+    }));
+  }, []);
+
+  const validateEditForm = useCallback((values) => {
+    const errors = {};
+    if (!values.date) {
+      errors.date = 'Choose a date';
+    }
+    if (!values.time) {
+      errors.time = 'Choose a time';
+    }
+    if (!values.location) {
+      errors.location = 'Location is required';
+    }
+    if (!values.treatment_description) {
+      errors.treatment_description = 'Treatment is required';
+    }
+    const treatmentCountValue = Number(values.treatment_count || 1);
+    if (Number.isNaN(treatmentCountValue) || treatmentCountValue <= 0) {
+      errors.treatment_count = 'Sessions must be at least 1';
+    }
+    const priceValue = Number(values.price);
+    if (values.price === '' || Number.isNaN(priceValue) || priceValue < 0) {
+      errors.price = 'Enter a valid price';
+    }
+    if (!values.therapistId) {
+      errors.therapistId = 'Select a therapist';
+    }
+    return errors;
+  }, []);
+
+  const handleEditAppointment = async () => {
+    if (!editDialog.appointment) {
+      return;
+    }
+    const validationErrors = validateEditForm(editDialog.values);
+    if (Object.keys(validationErrors).length) {
+      setEditDialog((prev) => ({
+        ...prev,
+        errors: validationErrors,
+      }));
+      return;
+    }
+
+    const scheduledDate = new Date(`${editDialog.values.date}T${editDialog.values.time}`);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      setEditDialog((prev) => ({
+        ...prev,
+        errors: { ...prev.errors, date: 'Enter a valid date/time' },
+      }));
+      return;
+    }
+
+    const therapist = editTherapistSelection;
+    if (!therapist) {
+      setEditDialog((prev) => ({
+        ...prev,
+        errors: { ...prev.errors, therapistId: 'Select a therapist' },
+      }));
+      return;
+    }
+
+    const treatmentCountValue = Number(editDialog.values.treatment_count || 1);
+    const priceValue = Number(editDialog.values.price);
+
+    let employeeIdValue;
+    if (editDialog.values.employeeID === '' || editDialog.values.employeeID === null || editDialog.values.employeeID === undefined) {
+      employeeIdValue = therapist.employeeID;
+    } else {
+      employeeIdValue = Number(editDialog.values.employeeID);
+    }
+
+    if (employeeIdValue === undefined || employeeIdValue === null || Number.isNaN(employeeIdValue)) {
+      setEditDialog((prev) => ({
+        ...prev,
+        submitError: 'The selected therapist does not have an employee ID configured.',
+      }));
+      return;
+    }
+
+    setEditDialog((prev) => ({
+      ...prev,
+      submitting: true,
+      submitError: '',
+      errors: {},
+    }));
+
+    const payload = {
+      date: scheduledDate.toISOString(),
+      location: editDialog.values.location,
+      room: editDialog.values.room,
+      treatment_description: editDialog.values.treatment_description,
+      treatment_count: treatmentCountValue,
+      price: priceValue,
+      therapist: therapist.id,
+      employeeID: employeeIdValue,
+    };
+
+    try {
+      const response = await apiClient.put(
+        `/api/appointments/${editDialog.appointment.appointment_id}`,
+        payload,
+      );
+      const updated = response.data?.appointment;
+      if (updated) {
+        setAppointments((prevAppointments) =>
+          prevAppointments.map((appointment) =>
+            appointment.appointment_id === updated.appointment_id
+              ? { ...appointment, ...updated }
+              : appointment,
+          ),
+        );
+      }
+      setSubmitSuccess('Appointment updated');
+      closeEditDialog();
+      refreshAppointments();
+    } catch (err) {
+      const message = err?.response?.data?.message || 'Failed to update appointment';
+      console.error('Failed to update appointment', err);
+      setEditDialog((prev) => ({
+        ...prev,
+        submitError: message,
+      }));
+    } finally {
+      setEditDialog((prev) => ({
+        ...prev,
+        submitting: false,
+      }));
+    }
+  };
 
   const openCompletionDialog = (appointment) => {
     const allowedValues = COMPLETION_OUTCOME_OPTIONS.map((option) => option.value);
@@ -528,6 +747,17 @@ const Appointments = ({ userData }) => {
         gap: 1,
       }}
     >
+      {canManageAppointments && (
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => openEditDialog(row)}
+          sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
+          fullWidth={isMobile}
+        >
+          Edit
+        </Button>
+      )}
       {canUpdateOutcome && (
         <Button
           size="small"
@@ -690,6 +920,28 @@ const Appointments = ({ userData }) => {
     }
     return therapistOptions.find((therapist) => therapist.id === formState.therapistId) || null;
   }, [therapistOptions, formState.therapistId]);
+  const editTherapistSelection = useMemo(() => {
+    if (!editDialog.values.therapistId) {
+      return null;
+    }
+    const match = therapistOptions.find(
+      (therapist) => String(therapist.id) === String(editDialog.values.therapistId),
+    );
+    if (match) {
+      return match;
+    }
+    if (editDialog.appointment) {
+      const fallbackName = editDialog.appointment.therapistName
+        || editDialog.appointment.therapist_name
+        || `Employee #${editDialog.appointment.employeeID || 'assigned'}`;
+      return {
+        id: editDialog.values.therapistId,
+        name: fallbackName,
+        employeeID: editDialog.values.employeeID ? Number(editDialog.values.employeeID) : null,
+      };
+    }
+    return null;
+  }, [editDialog.appointment, editDialog.values.employeeID, editDialog.values.therapistId, therapistOptions]);
 
   const formatPatientAddress = useCallback((patient) => {
     if (!patient?.address) {
@@ -1259,6 +1511,153 @@ const Appointments = ({ userData }) => {
           </Button>
           <Button onClick={handleCreateAppointment} variant="contained" disabled={submitting}>
             {submitting ? 'Saving...' : 'Save Appointment'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={editDialog.open} onClose={closeEditDialog} maxWidth="sm" fullWidth fullScreen={isMobile}>
+        <DialogTitle>Edit Appointment</DialogTitle>
+        <DialogContent dividers>
+          {editDialog.submitError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {editDialog.submitError}
+            </Alert>
+          )}
+          {editDialog.appointment && (
+            <Box mb={2}>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {editDialog.appointment.first_name} {editDialog.appointment.surname}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Appointment #{editDialog.appointment.appointment_id}
+              </Typography>
+            </Box>
+          )}
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <Autocomplete
+                options={therapistOptions}
+                value={editTherapistSelection}
+                onChange={(event, newValue) => {
+                  setEditDialog((prev) => ({
+                    ...prev,
+                    values: {
+                      ...prev.values,
+                      therapistId: newValue?.id || '',
+                      employeeID: newValue?.employeeID ?? '',
+                    },
+                    errors: {
+                      ...prev.errors,
+                      therapistId: undefined,
+                    },
+                    submitError: '',
+                  }));
+                }}
+                loading={therapistsLoading}
+                disabled={!therapistOptions.length}
+                getOptionLabel={(option) => {
+                  if (!option) {
+                    return '';
+                  }
+                  if (option.employeeID) {
+                    return `${option.name} (${option.employeeID})`;
+                  }
+                  return option.name || '';
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Therapist"
+                    required
+                    error={Boolean(editDialog.errors.therapistId)}
+                    helperText={editDialog.errors.therapistId}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Date"
+                type="date"
+                fullWidth
+                value={editDialog.values.date}
+                onChange={(event) => handleEditFieldChange('date', event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                error={Boolean(editDialog.errors.date)}
+                helperText={editDialog.errors.date}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Time"
+                type="time"
+                fullWidth
+                value={editDialog.values.time}
+                onChange={(event) => handleEditFieldChange('time', event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                error={Boolean(editDialog.errors.time)}
+                helperText={editDialog.errors.time}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Location"
+                fullWidth
+                value={editDialog.values.location}
+                onChange={(event) => handleEditFieldChange('location', event.target.value)}
+                error={Boolean(editDialog.errors.location)}
+                helperText={editDialog.errors.location}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Room"
+                fullWidth
+                value={editDialog.values.room}
+                onChange={(event) => handleEditFieldChange('room', event.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Treatment"
+                fullWidth
+                value={editDialog.values.treatment_description}
+                onChange={(event) => handleEditFieldChange('treatment_description', event.target.value)}
+                error={Boolean(editDialog.errors.treatment_description)}
+                helperText={editDialog.errors.treatment_description}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Sessions"
+                type="number"
+                fullWidth
+                inputProps={{ min: 1 }}
+                value={editDialog.values.treatment_count}
+                onChange={(event) => handleEditFieldChange('treatment_count', event.target.value)}
+                error={Boolean(editDialog.errors.treatment_count)}
+                helperText={editDialog.errors.treatment_count}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Price"
+                type="number"
+                fullWidth
+                inputProps={{ min: 0, step: 0.01 }}
+                value={editDialog.values.price}
+                onChange={(event) => handleEditFieldChange('price', event.target.value)}
+                error={Boolean(editDialog.errors.price)}
+                helperText={editDialog.errors.price}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEditDialog} disabled={editDialog.submitting} sx={{ color: '#fff' }}>
+            Cancel
+          </Button>
+          <Button onClick={handleEditAppointment} variant="contained" disabled={editDialog.submitting}>
+            {editDialog.submitting ? 'Saving...' : 'Save Changes'}
           </Button>
         </DialogActions>
       </Dialog>
