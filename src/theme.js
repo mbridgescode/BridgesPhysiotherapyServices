@@ -83,6 +83,7 @@ const theme = createTheme({
           padding: '10px 22px',
           backgroundImage: `linear-gradient(120deg, ${baseColors.primary}, ${baseColors.primaryAlt})`,
           boxShadow: '0 10px 30px rgba(168, 85, 247, 0.35)',
+          color: baseColors.textPrimary,
           transition: 'transform 200ms ease, box-shadow 200ms ease',
           '&:hover': {
             transform: 'translateY(-2px)',
