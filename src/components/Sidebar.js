@@ -1,6 +1,6 @@
 // src/components/Sidebar.js
 
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import {
   Drawer,
   List,
@@ -26,10 +26,13 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   TrendingDown as ProfitLossIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { styled } from '@mui/material/styles';
 import { UserContext } from '../context/UserContext';
+import apiClient from '../utils/apiClient';
+import { emitAuthTokenChanged } from '../utils/authEvents';
 
 export const SIDEBAR_WIDTH = 212;
 export const SIDEBAR_COLLAPSED_WIDTH = 72;
@@ -73,6 +76,7 @@ const Sidebar = ({
   const location = useLocation();
   const { userData } = useContext(UserContext);
   const role = userData?.role;
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const navItems = [
     {
@@ -130,6 +134,26 @@ const Sidebar = ({
       roles: ['admin'],
     },
   ];
+
+  const handleLogout = async () => {
+    if (loggingOut) {
+      return;
+    }
+    setLoggingOut(true);
+    try {
+      await apiClient.post('/auth/logout');
+    } catch (error) {
+      console.error('Failed to logout', error);
+    } finally {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('token');
+        window.localStorage.removeItem('user');
+      }
+      emitAuthTokenChanged();
+      navigate('/login');
+      setLoggingOut(false);
+    }
+  };
 
   const effectiveCollapsed = variant === 'temporary' ? false : collapsed;
 
@@ -273,7 +297,46 @@ const Sidebar = ({
                 );
               }
               return button;
-            })}
+          })}
+          <Divider sx={{ my: 2, borderColor: 'rgba(148, 163, 184, 0.12)' }} />
+          <ListItemButton
+            onClick={handleLogout}
+            disabled={loggingOut}
+            sx={{
+              borderRadius: 2.5,
+              color: 'rgba(248,250,252,0.85)',
+              justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
+              minHeight: 50,
+              gap: effectiveCollapsed ? 0 : 1.5,
+              pl: effectiveCollapsed ? 0 : 1,
+              pr: effectiveCollapsed ? 0 : 1.5,
+              '&:hover': {
+                backgroundColor: 'rgba(248,113,113,0.12)',
+              },
+            }}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: effectiveCollapsed ? 0 : 36,
+                color: 'inherit',
+                justifyContent: 'center',
+              }}
+            >
+              <LogoutIcon fontSize="small" />
+            </ListItemIcon>
+            {!effectiveCollapsed && (
+              <ListItemText
+                primary={loggingOut ? 'Logging out...' : 'Log Out'}
+                sx={{
+                  '& .MuiTypography-root': {
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.02em',
+                  },
+                }}
+              />
+            )}
+          </ListItemButton>
         </List>
       </DrawerStyled>
     </>

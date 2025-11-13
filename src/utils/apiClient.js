@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { emitAuthTokenChanged } from './authEvents';
 
 const resolveBaseUrl = () => {
   if (process.env.REACT_APP_API_BASE_URL) {
@@ -39,5 +40,102 @@ apiClient.interceptors.request.use((config) => {
   }
   return config;
 });
+
+let isRefreshing = false;
+let pendingRequests = [];
+
+const queueRequest = () =>
+  new Promise((resolve, reject) => {
+    pendingRequests.push({ resolve, reject });
+  });
+
+const resolveQueue = (token) => {
+  pendingRequests.forEach(({ resolve }) => resolve(token));
+  pendingRequests = [];
+};
+
+const rejectQueue = (error) => {
+  pendingRequests.forEach(({ reject }) => reject(error));
+  pendingRequests = [];
+};
+
+const persistAccessToken = (token, user) => {
+  if (typeof window !== 'undefined') {
+    if (token) {
+      window.localStorage.setItem('token', token);
+      if (user) {
+        window.localStorage.setItem('user', JSON.stringify(user));
+      }
+    } else {
+      window.localStorage.removeItem('token');
+      window.localStorage.removeItem('user');
+    }
+  }
+};
+
+const refreshAccessToken = async () => {
+  const response = await apiClient.post(
+    '/auth/refresh',
+    undefined,
+    { skipAuthRefresh: true },
+  );
+  const nextToken = response.data?.accessToken;
+  if (!nextToken) {
+    throw new Error('Refresh succeeded without token');
+  }
+  const nextUser = response.data?.user;
+  persistAccessToken(nextToken, nextUser);
+  emitAuthTokenChanged();
+  return { token: nextToken, user: nextUser };
+};
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const { config, response } = error;
+
+    if (
+      !response
+      || response.status !== 401
+      || !config
+      || config.skipAuthRefresh
+      || config._retry
+      || (typeof config.url === 'string' && config.url.startsWith('/auth/'))
+    ) {
+      return Promise.reject(error);
+    }
+
+    if (isRefreshing) {
+      try {
+        const token = await queueRequest();
+        if (token && config.headers) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return apiClient(config);
+      } catch (queueError) {
+        return Promise.reject(queueError);
+      }
+    }
+
+    config._retry = true;
+    isRefreshing = true;
+
+    try {
+      const { token } = await refreshAccessToken();
+      if (config.headers && token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      resolveQueue(token);
+      return apiClient(config);
+    } catch (refreshError) {
+      rejectQueue(refreshError);
+      persistAccessToken(null);
+      emitAuthTokenChanged();
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
+  },
+);
 
 export default apiClient;

@@ -55,6 +55,7 @@ const PAYMENT_METHODS = [
   { value: 'card', label: 'Card' },
   { value: 'cash', label: 'Cash' },
   { value: 'transfer', label: 'Bank Transfer' },
+  { value: 'cheque', label: 'Cheque' },
   { value: 'insurance', label: 'Insurance' },
   { value: 'other', label: 'Other' },
 ];

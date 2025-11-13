@@ -16,7 +16,11 @@ const paymentSchema = new Schema({
   amount_paid: { type: Number, required: true },
   currency: { type: String, default: 'GBP' },
   payment_date: { type: Date, default: Date.now },
-  method: { type: String, enum: ['card', 'cash', 'transfer', 'insurance', 'other'], default: 'other' },
+  method: {
+    type: String,
+    enum: ['card', 'cash', 'transfer', 'cheque', 'insurance', 'other'],
+    default: 'other',
+  },
   reference: encryptedStringField({ trim: true }),
   status: {
     type: String,
