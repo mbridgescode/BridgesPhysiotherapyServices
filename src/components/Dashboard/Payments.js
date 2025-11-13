@@ -20,10 +20,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  DialogContentText,
   Grid,
   Alert,
   Snackbar,
 } from '@mui/material';
+import Autocomplete from '@mui/material/Autocomplete';
 import { makeStyles } from '@mui/styles';
 import apiClient from '../../utils/apiClient';
 import DataTable from '../common/DataTable';
@@ -63,16 +65,51 @@ const formatCurrency = (amount, currency = 'GBP') => {
 };
 
 const defaultFormState = () => ({
-  invoice_number: '',
-  invoice_id: '',
-  patient_id: '',
-  appointment_id: '',
   amount_paid: '',
   method: 'card',
   payment_date: new Date().toISOString().split('T')[0],
   reference: '',
   notes: '',
 });
+
+const buildInvoiceLabel = (invoice) => {
+  if (!invoice) {
+    return '';
+  }
+  const patientLabel = invoice.patient_name
+    || (invoice.patient_id ? `Patient #${invoice.patient_id}` : '');
+  const balance = invoice.balance_due ?? invoice.totals?.balance ?? invoice.total_due;
+  const parts = [
+    invoice.invoice_number,
+    patientLabel,
+    balance !== undefined ? `Balance ${formatCurrency(balance, invoice.currency || 'GBP')}` : null,
+  ].filter(Boolean);
+  return parts.join(' • ');
+};
+
+const resolveInvoiceForPayment = (payment, invoiceOptions) => {
+  if (!payment) {
+    return null;
+  }
+  const match = invoiceOptions.find(
+    (invoice) => invoice.invoice_id === payment.invoice_id
+      || invoice.invoice_number === payment.invoice_number,
+  );
+  if (match) {
+    return match;
+  }
+  const summary = payment.invoice_summary || {};
+  return {
+    invoice_id: payment.invoice_id,
+    invoice_number: payment.invoice_number,
+    patient_id: payment.patient_id,
+    patient_name: summary.patient_name,
+    balance_due: summary.balance_due,
+    total_due: summary.total_due,
+    currency: summary.currency || 'GBP',
+    status: summary.status,
+  };
+};
 
 const Payments = ({ userData }) => {
   const classes = useStyles();
@@ -83,11 +120,23 @@ const Payments = ({ userData }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState('create');
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [formState, setFormState] = useState(defaultFormState);
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [toast, setToast] = useState({ message: '', severity: 'success' });
+  const [invoiceOptions, setInvoiceOptions] = useState([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(true);
+  const [invoiceError, setInvoiceError] = useState('');
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [deleteDialog, setDeleteDialog] = useState({
+    open: false,
+    payment: null,
+    submitting: false,
+    error: '',
+  });
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -103,13 +152,45 @@ const Payments = ({ userData }) => {
     }
   }, []);
 
+  const fetchInvoices = useCallback(async () => {
+    setInvoicesLoading(true);
+    try {
+      const response = await apiClient.get('/api/invoices', { params: { include: 'payments' } });
+      setInvoiceOptions(response.data?.invoices || []);
+      setInvoiceError('');
+    } catch (err) {
+      console.error('Failed to load invoices', err);
+      setInvoiceError('Unable to load invoice list');
+      setInvoiceOptions([]);
+    } finally {
+      setInvoicesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!canManagePayments) {
       setLoading(false);
       return;
     }
     fetchPayments();
-  }, [fetchPayments, canManagePayments]);
+    fetchInvoices();
+  }, [canManagePayments, fetchPayments, fetchInvoices]);
+
+  useEffect(() => {
+    if (
+      dialogOpen
+      && dialogMode === 'create'
+      && selectedInvoice
+      && !formState.amount_paid
+    ) {
+      const outstanding = selectedInvoice.balance_due
+        ?? selectedInvoice.totals?.balance
+        ?? selectedInvoice.total_due;
+      if (outstanding) {
+        setFormState((prev) => ({ ...prev, amount_paid: outstanding.toString() }));
+      }
+    }
+  }, [dialogOpen, dialogMode, selectedInvoice, formState.amount_paid]);
 
   const filteredPayments = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -126,15 +207,14 @@ const Payments = ({ userData }) => {
         }
         const haystack = [
           payment.invoice_number,
-          payment.invoice_id,
-          payment.patient_id,
-          payment.appointment_id,
+          String(payment.invoice_id || ''),
+          payment.invoice_summary?.patient_name,
           payment.method,
           payment.reference,
           payment.notes,
-          payment.recordedBy?.username,
         ]
-          .map((value) => (value === null || value === undefined ? '' : String(value).toLowerCase()));
+          .filter(Boolean)
+          .map((value) => value.toString().toLowerCase());
         return haystack.some((entry) => entry.includes(query));
       });
   }, [payments, searchTerm, methodFilter]);
@@ -143,11 +223,32 @@ const Payments = ({ userData }) => {
     setFormState(defaultFormState());
     setFormErrors({});
     setSubmitError('');
+    setSelectedInvoice(null);
+    setEditingPayment(null);
   }, []);
 
   const handleOpenDialog = () => {
+    setDialogMode('create');
     resetForm();
     setDialogOpen(true);
+  };
+
+  const handleEditPayment = (payment) => {
+    setDialogMode('edit');
+    setEditingPayment(payment);
+    setDialogOpen(true);
+    setFormState({
+      amount_paid: payment.amount_paid?.toString() || '',
+      method: payment.method || 'card',
+      payment_date: payment.payment_date
+        ? new Date(payment.payment_date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0],
+      reference: payment.reference || '',
+      notes: payment.notes || '',
+    });
+    setSelectedInvoice(resolveInvoiceForPayment(payment, invoiceOptions));
+    setFormErrors({});
+    setSubmitError('');
   };
 
   const handleCloseDialog = () => {
@@ -155,27 +256,26 @@ const Payments = ({ userData }) => {
       return;
     }
     setDialogOpen(false);
-    setSubmitError('');
   };
 
   const validateForm = () => {
     const errors = {};
-    if (!formState.invoice_number.trim() && !formState.invoice_id.trim()) {
-      errors.invoice_number = 'Invoice number or ID is required';
+    if (!selectedInvoice) {
+      errors.invoice = 'Please select an invoice';
     }
     if (!formState.amount_paid || Number(formState.amount_paid) <= 0) {
       errors.amount_paid = 'Amount must be greater than zero';
     }
-    if (!formState.method) {
-      errors.method = 'Method is required';
-    }
     if (!formState.payment_date) {
       errors.payment_date = 'Payment date is required';
+    }
+    if (!formState.method) {
+      errors.method = 'Method is required';
     }
     return errors;
   };
 
-  const handleCreatePayment = async () => {
+  const handleSubmitPayment = async () => {
     const errors = validateForm();
     if (Object.keys(errors).length) {
       setFormErrors(errors);
@@ -186,10 +286,8 @@ const Payments = ({ userData }) => {
     setSubmitError('');
     try {
       const payload = {
-        invoice_number: formState.invoice_number.trim() || undefined,
-        invoice_id: formState.invoice_id ? Number(formState.invoice_id) : undefined,
-        patient_id: formState.patient_id ? Number(formState.patient_id) : undefined,
-        appointment_id: formState.appointment_id ? Number(formState.appointment_id) : undefined,
+        invoice_number: selectedInvoice?.invoice_number,
+        invoice_id: selectedInvoice?.invoice_id,
         amount_paid: Number(formState.amount_paid),
         method: formState.method,
         payment_date: formState.payment_date,
@@ -197,21 +295,72 @@ const Payments = ({ userData }) => {
         notes: formState.notes.trim() || undefined,
       };
 
-      const response = await apiClient.post('/api/payments', payload);
-      const createdPayment = response.data?.payment;
-      if (createdPayment) {
-        setPayments((prev) => [createdPayment, ...prev]);
+      if (dialogMode === 'edit' && editingPayment) {
+        await apiClient.put(`/api/payments/${editingPayment.payment_id}`, payload);
+        setToast({ message: 'Payment updated', severity: 'success' });
+      } else {
+        await apiClient.post('/api/payments', payload);
+        setToast({ message: 'Payment recorded', severity: 'success' });
       }
-      setToast({ message: 'Payment recorded successfully', severity: 'success' });
+
       setDialogOpen(false);
+      await Promise.all([fetchPayments(), fetchInvoices()]);
       resetForm();
     } catch (err) {
-      const message = err?.response?.data?.message || 'Failed to record payment';
+      const message = err?.response?.data?.message || 'Failed to save payment';
       setSubmitError(message);
     } finally {
       setSubmitting(false);
     }
   };
+
+  const handleOpenDeleteDialog = (payment) => {
+    setDeleteDialog({
+      open: true,
+      payment,
+      submitting: false,
+      error: '',
+    });
+  };
+
+  const handleCloseDeleteDialog = () => {
+    if (deleteDialog.submitting) {
+      return;
+    }
+    setDeleteDialog({ open: false, payment: null, submitting: false, error: '' });
+  };
+
+  const handleDeletePayment = async () => {
+    if (!deleteDialog.payment) {
+      return;
+    }
+    setDeleteDialog((prev) => ({ ...prev, submitting: true, error: '' }));
+    try {
+      await apiClient.delete(`/api/payments/${deleteDialog.payment.payment_id}`);
+      await Promise.all([fetchPayments(), fetchInvoices()]);
+      setToast({ message: 'Payment deleted', severity: 'success' });
+      setDeleteDialog({ open: false, payment: null, submitting: false, error: '' });
+    } catch (err) {
+      const message = err?.response?.data?.message || 'Failed to delete payment';
+      setDeleteDialog((prev) => ({ ...prev, submitting: false, error: message }));
+    }
+  };
+
+  const renderRowActions = (row) => (
+    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+      <Button size="small" variant="outlined" onClick={() => handleEditPayment(row)}>
+        Edit
+      </Button>
+      <Button
+        size="small"
+        variant="outlined"
+        color="error"
+        onClick={() => handleOpenDeleteDialog(row)}
+      >
+        Delete
+      </Button>
+    </Box>
+  );
 
   const paymentColumns = [
     {
@@ -238,34 +387,37 @@ const Payments = ({ userData }) => {
       },
     },
     {
-      id: 'invoice_number',
+      id: 'invoice',
       label: 'Invoice',
-      minWidth: 160,
-      render: (row) => (
-        <Box>
-          <Typography variant="body2" fontWeight={600}>
-            {row.invoice_number || 'N/A'}
-          </Typography>
-          {row.invoice_id && (
-            <Typography variant="caption" color="text.secondary">
-              #{row.invoice_id}
+      minWidth: 220,
+      render: (row) => {
+        const summary = row.invoice_summary || {};
+        return (
+          <Box>
+            <Typography variant="body2" fontWeight={600}>
+              {row.invoice_number || 'N/A'}
             </Typography>
-          )}
-        </Box>
-      ),
-    },
-    {
-      id: 'patient_id',
-      label: 'Patient',
-      minWidth: 140,
-      render: (row) => (row.patient_id ? `#${row.patient_id}` : '--'),
+            <Typography variant="caption" color="text.secondary">
+              {summary.patient_name || (row.patient_id ? `Patient #${row.patient_id}` : '--')}
+            </Typography>
+            {summary.balance_due !== undefined && (
+              <Typography variant="caption" color="text.secondary">
+                Balance: {formatCurrency(summary.balance_due, summary.currency)}
+              </Typography>
+            )}
+          </Box>
+        );
+      },
     },
     {
       id: 'amount_paid',
       label: 'Amount',
       minWidth: 140,
       type: 'number',
-      render: (row) => formatCurrency(row.amount_paid, row.currency),
+      render: (row) => {
+        const currency = row.invoice_summary?.currency || row.currency;
+        return formatCurrency(row.amount_paid, currency);
+      },
     },
     {
       id: 'method',
@@ -291,15 +443,25 @@ const Payments = ({ userData }) => {
       sortable: false,
       render: (row) => row.notes || '--',
     },
+    {
+      id: 'actions',
+      label: 'Actions',
+      minWidth: 180,
+      sortable: false,
+      filterable: false,
+      align: 'right',
+      render: renderRowActions,
+    },
   ];
 
   const renderMobileCard = (row) => {
     const dateValue = row.payment_date ? new Date(row.payment_date) : null;
+    const summary = row.invoice_summary || {};
     return (
       <Card variant="outlined" sx={{ backgroundColor: 'rgba(15,23,42,0.6)' }}>
         <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <Typography variant="subtitle1" fontWeight={600}>
-            {formatCurrency(row.amount_paid, row.currency)}
+            {formatCurrency(row.amount_paid, summary.currency || row.currency)}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {dateValue
@@ -307,13 +469,11 @@ const Payments = ({ userData }) => {
               : 'Date TBC'}
           </Typography>
           <Typography variant="body2">
-            Invoice: {row.invoice_number || 'N/A'}
+            Invoice {row.invoice_number || 'N/A'}
           </Typography>
-          {row.patient_id && (
-            <Typography variant="body2" color="text.secondary">
-              Patient #{row.patient_id}
-            </Typography>
-          )}
+          <Typography variant="body2" color="text.secondary">
+            {summary.patient_name || (row.patient_id ? `Patient #${row.patient_id}` : '--')}
+          </Typography>
           {row.reference && (
             <Typography variant="body2">Ref: {row.reference}</Typography>
           )}
@@ -322,6 +482,7 @@ const Payments = ({ userData }) => {
               {row.notes}
             </Typography>
           )}
+          {renderRowActions(row)}
         </CardContent>
       </Card>
     );
@@ -349,6 +510,10 @@ const Payments = ({ userData }) => {
     return <Typography variant="h6">{error}</Typography>;
   }
 
+  const selectedInvoiceBalance = selectedInvoice
+    ? selectedInvoice.balance_due ?? selectedInvoice.totals?.balance ?? selectedInvoice.total_due
+    : null;
+
   return (
     <Box
       sx={{
@@ -368,7 +533,7 @@ const Payments = ({ userData }) => {
             <Typography variant="h5" gutterBottom sx={{ mb: 0 }}>
               Payments
             </Typography>
-            <Box display="flex" gap={1} flexWrap="wrap">
+            <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
               <TextField
                 select
                 size="small"
@@ -414,7 +579,7 @@ const Payments = ({ userData }) => {
       </Card>
 
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Record Payment</DialogTitle>
+        <DialogTitle>{dialogMode === 'edit' ? 'Edit Payment' : 'Record Payment'}</DialogTitle>
         <DialogContent dividers>
           {submitError && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -422,43 +587,58 @@ const Payments = ({ userData }) => {
             </Alert>
           )}
           <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Invoice Number"
-                fullWidth
-                value={formState.invoice_number}
-                onChange={(event) => {
-                  setFormState((prev) => ({ ...prev, invoice_number: event.target.value }));
-                  setFormErrors((prev) => ({ ...prev, invoice_number: undefined }));
+            <Grid item xs={12}>
+              <Autocomplete
+                options={invoiceOptions}
+                loading={invoicesLoading}
+                value={selectedInvoice}
+                onChange={(event, newValue) => {
+                  setSelectedInvoice(newValue);
+                  setFormErrors((prev) => ({ ...prev, invoice: undefined }));
                 }}
-                error={Boolean(formErrors.invoice_number)}
-                helperText={formErrors.invoice_number || 'Required if invoice ID is empty'}
+                getOptionLabel={buildInvoiceLabel}
+                isOptionEqualToValue={(option, value) =>
+                  option.invoice_id === value.invoice_id
+                  || option.invoice_number === value.invoice_number
+                }
+                loadingText="Loading invoices..."
+                noOptionsText={invoiceError || 'No invoices match your search'}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Invoice"
+                    placeholder="Search by invoice number or patient"
+                    error={Boolean(formErrors.invoice)}
+                    helperText={formErrors.invoice || invoiceError}
+                  />
+                )}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Invoice ID"
-                fullWidth
-                value={formState.invoice_id}
-                onChange={(event) => setFormState((prev) => ({ ...prev, invoice_id: event.target.value }))}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Patient ID"
-                fullWidth
-                value={formState.patient_id}
-                onChange={(event) => setFormState((prev) => ({ ...prev, patient_id: event.target.value }))}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Appointment ID"
-                fullWidth
-                value={formState.appointment_id}
-                onChange={(event) => setFormState((prev) => ({ ...prev, appointment_id: event.target.value }))}
-              />
-            </Grid>
+            {selectedInvoice && (
+              <Grid item xs={12}>
+                <Box
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    backgroundColor: 'rgba(99,102,241,0.08)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 0.5,
+                  }}
+                >
+                  <Typography variant="subtitle2">{selectedInvoice.invoice_number}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedInvoice.patient_name
+                      || (selectedInvoice.patient_id ? `Patient #${selectedInvoice.patient_id}` : 'Unknown patient')}
+                  </Typography>
+                  {selectedInvoiceBalance !== null && (
+                    <Typography variant="body2">
+                      Outstanding: {formatCurrency(selectedInvoiceBalance, selectedInvoice.currency || 'GBP')}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+            )}
             <Grid item xs={12} sm={6}>
               <TextField
                 label="Amount Paid"
@@ -471,6 +651,21 @@ const Payments = ({ userData }) => {
                 }}
                 error={Boolean(formErrors.amount_paid)}
                 helperText={formErrors.amount_paid}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Payment Date"
+                type="date"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={formState.payment_date}
+                onChange={(event) => {
+                  setFormState((prev) => ({ ...prev, payment_date: event.target.value }));
+                  setFormErrors((prev) => ({ ...prev, payment_date: undefined }));
+                }}
+                error={Boolean(formErrors.payment_date)}
+                helperText={formErrors.payment_date}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -492,21 +687,6 @@ const Payments = ({ userData }) => {
                   </MenuItem>
                 ))}
               </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Payment Date"
-                type="date"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={formState.payment_date}
-                onChange={(event) => {
-                  setFormState((prev) => ({ ...prev, payment_date: event.target.value }));
-                  setFormErrors((prev) => ({ ...prev, payment_date: undefined }));
-                }}
-                error={Boolean(formErrors.payment_date)}
-                helperText={formErrors.payment_date}
-              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -532,11 +712,46 @@ const Payments = ({ userData }) => {
           <Button onClick={handleCloseDialog} disabled={submitting} sx={{ color: '#fff' }}>
             Cancel
           </Button>
-          <Button onClick={handleCreatePayment} variant="contained" disabled={submitting}>
-            {submitting ? 'Saving...' : 'Record Payment'}
+          <Button onClick={handleSubmitPayment} variant="contained" disabled={submitting}>
+            {submitting ? 'Saving...' : dialogMode === 'edit' ? 'Save Changes' : 'Record Payment'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog
+        open={deleteDialog.open}
+        onClose={handleCloseDeleteDialog}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete Payment</DialogTitle>
+        <DialogContent dividers>
+          <DialogContentText>
+            Are you sure you want to delete the payment of{' '}
+            {deleteDialog.payment ? formatCurrency(deleteDialog.payment.amount_paid) : '--'} for invoice{' '}
+            {deleteDialog.payment?.invoice_number || 'N/A'}?
+          </DialogContentText>
+          {deleteDialog.error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteDialog.error}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog} disabled={deleteDialog.submitting} sx={{ color: '#fff' }}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleDeletePayment}
+            disabled={deleteDialog.submitting}
+          >
+            {deleteDialog.submitting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Snackbar
         open={Boolean(toast.message)}
         autoHideDuration={4000}
@@ -556,4 +771,3 @@ const Payments = ({ userData }) => {
 };
 
 export default Payments;
-
