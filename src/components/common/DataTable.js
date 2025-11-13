@@ -1,5 +1,12 @@
 // src/components/common/DataTable.js
-import React, { useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Box,
   CircularProgress,
@@ -267,6 +274,9 @@ const DataTable = ({
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isCondensedTable = useMediaQuery(theme.breakpoints.down('lg'));
+  const columnCount = columns.length || 1;
+  const condensedColumnWidth = `${(100 / columnCount).toFixed(3)}%`;
   const sortableFallback = useMemo(
     () => columns.find((column) => column.sortable !== false)?.id ?? columns[0]?.id ?? '',
     [columns],
@@ -387,6 +397,53 @@ const DataTable = ({
     return maxHeight;
   })();
 
+  const containerRef = useRef(null);
+  const [autoHeight, setAutoHeight] = useState(null);
+  const shouldAutoSize = maxHeight === undefined || maxHeight === null;
+  const totalRowCount = Array.isArray(rows) ? rows.length : 0;
+
+  const updateAutoHeight = useCallback(() => {
+    if (!shouldAutoSize || !containerRef.current) {
+      return;
+    }
+    const rect = containerRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const verticalPadding = 32;
+    const nextHeight = Math.max(viewportHeight - rect.top - verticalPadding, 360);
+    setAutoHeight(nextHeight);
+  }, [shouldAutoSize]);
+
+  useLayoutEffect(() => {
+    if (!shouldAutoSize) {
+      return undefined;
+    }
+    updateAutoHeight();
+    window.addEventListener('resize', updateAutoHeight);
+    window.addEventListener('orientationchange', updateAutoHeight);
+    return () => {
+      window.removeEventListener('resize', updateAutoHeight);
+      window.removeEventListener('orientationchange', updateAutoHeight);
+    };
+  }, [shouldAutoSize, updateAutoHeight]);
+
+  useEffect(() => {
+    if (!shouldAutoSize) {
+      return;
+    }
+    updateAutoHeight();
+  }, [totalRowCount, shouldAutoSize, updateAutoHeight]);
+
+  const computedAutoHeight = shouldAutoSize && autoHeight ? `${autoHeight}px` : null;
+  const minHeightNumber =
+    typeof resolvedMinHeightValue === 'number' ? resolvedMinHeightValue : 420;
+  const computedMinHeight = shouldAutoSize && autoHeight
+    ? `${Math.min(autoHeight, minHeightNumber)}px`
+    : resolvedMinHeight;
+  const computedMaxHeight = shouldAutoSize && autoHeight
+    ? computedAutoHeight
+    : resolvedMaxHeight;
+  const computedHeight = shouldAutoSize && autoHeight ? computedAutoHeight : undefined;
+
   if (isMobile) {
     if (loading) {
       return (
@@ -449,15 +506,17 @@ const DataTable = ({
   }
 
   return (
-    <Box sx={{ position: 'relative', width: '100%' }}>
+    <Box sx={{ position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', flex: 1 }}>
       <TableContainer
+        ref={containerRef}
         component={containerComponent}
         sx={{
           width: '100%',
           maxWidth: '100%',
           flex: 1,
-          maxHeight: resolvedMaxHeight,
-          minHeight: resolvedMinHeight,
+          height: computedHeight,
+          maxHeight: computedMaxHeight,
+          minHeight: computedMinHeight,
           overflowX: 'auto',
           overflowY: 'auto',
           borderRadius: 2,
@@ -471,7 +530,8 @@ const DataTable = ({
           size={dense ? 'small' : 'medium'}
           sx={{
             width: '100%',
-            tableLayout: 'auto',
+            minWidth: 0,
+            tableLayout: isCondensedTable ? 'fixed' : 'auto',
             ...tableSx,
           }}
         >
@@ -487,8 +547,8 @@ const DataTable = ({
                     textTransform: 'uppercase',
                     fontSize: '0.75rem',
                     color: 'text.secondary',
-                    minWidth: responsiveMinWidth(column.minWidth),
-                    width: column.width,
+                    minWidth: isCondensedTable ? 0 : responsiveMinWidth(column.minWidth),
+                    width: isCondensedTable ? column.condensedWidth || condensedColumnWidth : column.width,
                     whiteSpace: column.wrap === false ? 'nowrap' : 'normal',
                     wordBreak: column.wrap === false ? 'normal' : 'break-word',
                     ...column.headerSx,
@@ -515,8 +575,8 @@ const DataTable = ({
                   align={column.align}
                   sx={{
                     backgroundColor: 'rgba(11,15,25,0.8)',
-                    minWidth: responsiveMinWidth(column.minWidth),
-                    width: column.width,
+                    minWidth: isCondensedTable ? 0 : responsiveMinWidth(column.minWidth),
+                    width: isCondensedTable ? column.condensedWidth || condensedColumnWidth : column.width,
                   }}
                 >
                   {renderFilterControl(column, filters[column.id] ?? '', (value) => handleFilterChange(column.id, value))}
@@ -546,8 +606,8 @@ const DataTable = ({
                           align={column.align}
                           sx={{
                             verticalAlign: 'top',
-                            minWidth: responsiveMinWidth(column.minWidth),
-                            width: column.width,
+                            minWidth: isCondensedTable ? 0 : responsiveMinWidth(column.minWidth),
+                            width: isCondensedTable ? column.condensedWidth || condensedColumnWidth : column.width,
                             whiteSpace: column.wrap === false ? 'nowrap' : 'normal',
                             wordBreak: column.wrap === false ? 'normal' : 'break-word',
                             ...column.cellSx,

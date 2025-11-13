@@ -428,14 +428,14 @@ const Patients = ({ userData }) => {
       minWidth: 220,
       valueGetter: (row) => formatPatientName(row),
       render: (row) => (
-        <Button
-          variant="text"
+        <Typography
+          component="span"
           color="primary"
+          sx={{ cursor: 'pointer', fontWeight: 600 }}
           onClick={() => handleViewDetails(row.patient_id)}
-          sx={{ textTransform: 'none', padding: 0, minWidth: 0 }}
         >
           {formatPatientName(row)}
-        </Button>
+        </Typography>
       ),
     },
     {
