@@ -34,6 +34,26 @@ const parseBoolean = (value) => {
   return Boolean(value);
 };
 
+const normalizeUsername = (value) => {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value !== 'string') {
+    return String(value).trim().toLowerCase();
+  }
+  return value.trim().toLowerCase();
+};
+
+const normalizeEmail = (value) => {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value !== 'string') {
+    return String(value).trim().toLowerCase();
+  }
+  return value.trim().toLowerCase();
+};
+
 router.get('/me', authenticate, async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
@@ -105,10 +125,47 @@ router.patch(
         return res.status(400).json({ success: false, message: 'Invalid role provided' });
       }
 
+      if (req.body.username !== undefined) {
+        const normalizedUsername = normalizeUsername(req.body.username);
+        if (!normalizedUsername) {
+          return res.status(400).json({ success: false, message: 'Username cannot be empty' });
+        }
+        const existingUsername = await User.findOne({
+          username: normalizedUsername,
+          _id: { $ne: user._id },
+        }).lean();
+        if (existingUsername) {
+          return res.status(409).json({ success: false, message: 'Username already in use' });
+        }
+        user.username = normalizedUsername;
+      }
+
       if (req.body.email !== undefined) {
-        user.email = typeof req.body.email === 'string'
-          ? req.body.email.toLowerCase()
-          : req.body.email;
+        const normalizedEmail = normalizeEmail(req.body.email);
+        if (!normalizedEmail) {
+          user.email = undefined;
+        } else {
+          const existingEmail = await User.findOne({
+            email: normalizedEmail,
+            _id: { $ne: user._id },
+          }).lean();
+          if (existingEmail) {
+            return res.status(409).json({ success: false, message: 'Email already in use' });
+          }
+          user.email = normalizedEmail;
+        }
+      }
+
+      if (req.body.employeeID !== undefined) {
+        if (req.body.employeeID === null || req.body.employeeID === '') {
+          user.employeeID = undefined;
+        } else {
+          const numericEmployeeId = Number(req.body.employeeID);
+          if (Number.isNaN(numericEmployeeId)) {
+            return res.status(400).json({ success: false, message: 'employeeID must be numeric' });
+          }
+          user.employeeID = numericEmployeeId;
+        }
       }
 
       if (req.body.active !== undefined) {

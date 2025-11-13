@@ -6,6 +6,10 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   FormControlLabel,
   Grid,
@@ -20,6 +24,7 @@ import {
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import apiClient from '../../utils/apiClient';
 import { UserContext } from '../../context/UserContext';
 import DataTable from '../common/DataTable';
@@ -38,6 +43,23 @@ const defaultForm = {
   administrator: false,
 };
 
+const createEmptyEditValues = () => ({
+  username: '',
+  email: '',
+  role: 'therapist',
+  administrator: false,
+  active: true,
+  employeeID: '',
+});
+
+const createInitialEditDialogState = () => ({
+  open: false,
+  userId: null,
+  values: createEmptyEditValues(),
+  lastNonAdminRole: 'therapist',
+  error: '',
+});
+
 const MIN_PASSWORD_LENGTH = 8;
 
 const Admin = () => {
@@ -50,6 +72,7 @@ const Admin = () => {
   const [savingUserId, setSavingUserId] = useState(null);
   const [deletingUserId, setDeletingUserId] = useState(null);
   const [lastNonAdminRole, setLastNonAdminRole] = useState(defaultForm.role);
+  const [editDialog, setEditDialog] = useState(createInitialEditDialogState());
 
   const isAdmin = userData?.role === 'admin';
 
@@ -162,11 +185,14 @@ const Admin = () => {
     setError(null);
     setSavingUserId(userId);
     try {
-      await apiClient.patch(`/api/users/${userId}`, payload);
+      const response = await apiClient.patch(`/api/users/${userId}`, payload);
       await loadUsers();
+      return { success: true, user: response.data?.user };
     } catch (err) {
       console.error('Failed to update user', err);
-      setError(err?.response?.data?.message || 'Unable to update user.');
+      const message = err?.response?.data?.message || 'Unable to update user.';
+      setError(message);
+      return { success: false, message };
     } finally {
       setSavingUserId(null);
     }
@@ -200,6 +226,130 @@ const Admin = () => {
       setError(err?.response?.data?.message || 'Unable to delete user.');
     } finally {
       setDeletingUserId(null);
+    }
+  };
+
+  const closeEditDialog = () => {
+    setEditDialog(createInitialEditDialogState());
+  };
+
+  const openEditUserDialog = (user) => {
+    if (!user) {
+      return;
+    }
+    setEditDialog({
+      open: true,
+      userId: user.id,
+      values: {
+        username: user.username || '',
+        email: user.email || '',
+        role: user.role || 'therapist',
+        administrator: user.role === 'admin' || Boolean(user.administrator),
+        active: user.active !== false,
+        employeeID: user.employeeID ?? '',
+      },
+      lastNonAdminRole: user.role && user.role !== 'admin' ? user.role : 'therapist',
+      error: '',
+    });
+  };
+
+  const handleEditInputChange = (field) => (event) => {
+    const value = event.target.value;
+    setEditDialog((prev) => ({
+      ...prev,
+      values: {
+        ...prev.values,
+        [field]: value,
+      },
+      error: '',
+    }));
+  };
+
+  const handleEditRoleChange = (event) => {
+    const value = event.target.value;
+    setEditDialog((prev) => ({
+      ...prev,
+      values: {
+        ...prev.values,
+        role: value,
+        administrator: value === 'admin',
+      },
+      lastNonAdminRole: value !== 'admin' ? value : prev.lastNonAdminRole,
+      error: '',
+    }));
+  };
+
+  const handleEditAdministratorToggle = (event) => {
+    const checked = event.target.checked;
+    setEditDialog((prev) => {
+      const fallbackRole = prev.lastNonAdminRole || 'therapist';
+      return {
+        ...prev,
+        values: {
+          ...prev.values,
+          administrator: checked,
+          role: checked
+            ? 'admin'
+            : prev.values.role === 'admin'
+              ? fallbackRole
+              : prev.values.role,
+        },
+        error: '',
+      };
+    });
+  };
+
+  const handleEditActiveToggle = (event) => {
+    const checked = event.target.checked;
+    setEditDialog((prev) => ({
+      ...prev,
+      values: {
+        ...prev.values,
+        active: checked,
+      },
+      error: '',
+    }));
+  };
+
+  const handleSaveEditedUser = async () => {
+    if (!editDialog.userId) {
+      return;
+    }
+    const trimmedUsername = editDialog.values.username.trim();
+    if (!trimmedUsername) {
+      setEditDialog((prev) => ({ ...prev, error: 'Username is required.' }));
+      return;
+    }
+    const trimmedEmail = editDialog.values.email?.trim() || '';
+
+    const employeeIdInput = editDialog.values.employeeID;
+    let normalizedEmployeeId = null;
+    if (employeeIdInput !== '' && employeeIdInput !== null && employeeIdInput !== undefined) {
+      const parsed = Number(employeeIdInput);
+      if (Number.isNaN(parsed)) {
+        setEditDialog((prev) => ({ ...prev, error: 'Employee ID must be numeric.' }));
+        return;
+      }
+      normalizedEmployeeId = parsed;
+    }
+
+    const payload = {
+      username: trimmedUsername,
+      email: trimmedEmail,
+      employeeID: normalizedEmployeeId,
+      role: editDialog.values.role,
+      administrator: editDialog.values.administrator,
+      active: editDialog.values.active,
+    };
+
+    const result = await handleUserUpdate(editDialog.userId, payload);
+    if (result?.success) {
+      closeEditDialog();
+    } else {
+      setEditDialog((prev) => ({
+        ...prev,
+        error: result?.message || 'Unable to update user.',
+      }));
     }
   };
 
@@ -283,22 +433,35 @@ const Admin = () => {
       filterable: false,
       minWidth: 120,
       render: (row) => (
-        <Tooltip title="Delete user">
-          <span>
-            <IconButton
-              size="small"
-              color="error"
-              disabled={
-                deletingUserId === row.id
-                || savingUserId === row.id
-                || row.id === userData?.id
-              }
-              onClick={() => handleDeleteUser(row.id, row.username)}
-            >
-              <DeleteIcon fontSize="inherit" />
-            </IconButton>
-          </span>
-        </Tooltip>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+          <Tooltip title="Edit user">
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => openEditUserDialog(row)}
+                disabled={savingUserId === row.id}
+              >
+                <EditIcon fontSize="inherit" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Delete user">
+            <span>
+              <IconButton
+                size="small"
+                color="error"
+                disabled={
+                  deletingUserId === row.id
+                  || savingUserId === row.id
+                  || row.id === userData?.id
+                }
+                onClick={() => handleDeleteUser(row.id, row.username)}
+              >
+                <DeleteIcon fontSize="inherit" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
       ),
     },
   ];
@@ -446,6 +609,101 @@ const Admin = () => {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={editDialog.open} onClose={closeEditDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit User</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Username"
+                value={editDialog.values.username}
+                onChange={handleEditInputChange('username')}
+                fullWidth
+                required
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Email"
+                type="email"
+                value={editDialog.values.email}
+                onChange={handleEditInputChange('email')}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel id="edit-role-label">Role</InputLabel>
+                <Select
+                  labelId="edit-role-label"
+                  label="Role"
+                  value={editDialog.values.role}
+                  onChange={handleEditRoleChange}
+                >
+                  {roles.map((role) => (
+                    <MenuItem key={role.value} value={role.value}>
+                      {role.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Employee ID"
+                value={editDialog.values.employeeID}
+                onChange={handleEditInputChange('employeeID')}
+                fullWidth
+                helperText="Optional"
+              />
+            </Grid>
+            <Grid item xs={12} md={6} display="flex" alignItems="center">
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={editDialog.values.active}
+                    onChange={handleEditActiveToggle}
+                  />
+                )}
+                label="Active"
+              />
+            </Grid>
+            <Grid item xs={12} md={6} display="flex" alignItems="center">
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={editDialog.values.administrator}
+                    onChange={handleEditAdministratorToggle}
+                  />
+                )}
+                label="Full Administrator"
+              />
+            </Grid>
+          </Grid>
+          {editDialog.error && (
+            <Typography color="error" variant="body2" sx={{ mt: 2 }}>
+              {editDialog.error}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={closeEditDialog}
+            disabled={savingUserId === editDialog.userId}
+            sx={{ color: '#fff' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveEditedUser}
+            variant="contained"
+            disabled={savingUserId === editDialog.userId}
+          >
+            {savingUserId === editDialog.userId ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
