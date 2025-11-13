@@ -321,38 +321,50 @@ const Admin = () => {
             display="flex"
             flexDirection="column"
             gap={2}
+            autoComplete="off"
           >
             <Typography variant="h5">Invite User</Typography>
             <Grid container spacing={2}>
               <Grid item xs={12} md={3}>
                 <TextField
                   label="Username"
+                  name="inviteUsername"
                   value={formState.username}
                   onChange={handleFormChange('username')}
                   fullWidth
                   required
+                  autoComplete="off"
+                  inputProps={{ autoComplete: 'off' }}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
                 <TextField
                   label="Email"
                   type="email"
+                  name="inviteEmail"
                   value={formState.email}
                   onChange={handleFormChange('email')}
                   fullWidth
                   required
+                  autoComplete="off"
+                  inputProps={{ autoComplete: 'off' }}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
                 <TextField
                   label="Temporary Password"
                   type="password"
+                  name="inviteTemporaryPassword"
                   value={formState.password}
                   onChange={handleFormChange('password')}
                   fullWidth
                   required
                   helperText={`Minimum ${MIN_PASSWORD_LENGTH} characters`}
-                  inputProps={{ minLength: MIN_PASSWORD_LENGTH }}
+                  autoComplete="new-password"
+                  inputProps={{
+                    minLength: MIN_PASSWORD_LENGTH,
+                    autoComplete: 'new-password',
+                  }}
                 />
               </Grid>
               <Grid item xs={12} md={3}>

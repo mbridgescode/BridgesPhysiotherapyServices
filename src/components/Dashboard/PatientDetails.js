@@ -33,6 +33,8 @@ import { Link as RouterLink, useParams } from 'react-router-dom';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import apiClient from '../../utils/apiClient';
 import { UserContext } from '../../context/UserContext';
 import { AppointmentsContext } from '../../context/AppointmentsContext';
@@ -112,6 +114,18 @@ const PatientDetails = () => {
 
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [editNoteDialog, setEditNoteDialog] = useState({ open: false, noteId: null, value: '' });
+  const [deleteNoteDialog, setDeleteNoteDialog] = useState({
+    open: false,
+    noteId: null,
+    preview: '',
+    date: null,
+  });
+  const [editingNoteError, setEditingNoteError] = useState('');
+  const [deleteNoteError, setDeleteNoteError] = useState('');
+  const [savingEditedNote, setSavingEditedNote] = useState(false);
+  const [deletingNote, setDeletingNote] = useState(false);
+  const [noteToast, setNoteToast] = useState({ message: '', severity: 'success' });
 
   const [selectedTreatmentId, setSelectedTreatmentId] = useState('');
   const [treatmentNote, setTreatmentNote] = useState('');
@@ -301,11 +315,133 @@ const PatientDetails = () => {
           notes: [created, ...(prev?.notes || [])],
         }));
         setNewNote('');
+        setNoteToast({ message: 'Note added successfully.', severity: 'success' });
       }
     } catch (err) {
       console.error('Failed to add patient note', err);
+      const message = err?.response?.data?.message || 'Failed to add patient note.';
+      setNoteToast({ message, severity: 'error' });
     } finally {
       setSavingNote(false);
+    }
+  };
+
+  const handleNoteToastClose = useCallback((event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setNoteToast((prev) => ({ ...prev, message: '' }));
+  }, []);
+
+  const openEditNoteDialog = useCallback((noteItem) => {
+    if (!noteItem) {
+      return;
+    }
+    setEditNoteDialog({
+      open: true,
+      noteId: noteItem._id || null,
+      value: noteItem.note || '',
+    });
+    setEditingNoteError('');
+  }, []);
+
+  const closeEditNoteDialog = useCallback(() => {
+    setEditNoteDialog({ open: false, noteId: null, value: '' });
+    setEditingNoteError('');
+  }, []);
+
+  const handleUpdatePatientNote = async () => {
+    if (!editNoteDialog.noteId) {
+      return;
+    }
+
+    const trimmedValue = editNoteDialog.value.trim();
+    if (!trimmedValue) {
+      setEditingNoteError('Note cannot be empty.');
+      return;
+    }
+
+    setSavingEditedNote(true);
+    setEditingNoteError('');
+    try {
+      const response = await apiClient.put(`/api/notes/${editNoteDialog.noteId}`, {
+        note: trimmedValue,
+      });
+      const updated = response.data?.note;
+      if (updated) {
+        setDetails((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          const currentNotes = prev.notes || [];
+          return {
+            ...prev,
+            notes: currentNotes.map((noteItem) => (
+              noteItem._id === updated._id ? updated : noteItem
+            )),
+          };
+        });
+        setNoteToast({ message: 'Note updated successfully.', severity: 'success' });
+        closeEditNoteDialog();
+      }
+    } catch (err) {
+      console.error('Failed to update patient note', err);
+      const message = err?.response?.data?.message || 'Failed to update note.';
+      setEditingNoteError(message);
+    } finally {
+      setSavingEditedNote(false);
+    }
+  };
+
+  const openDeleteNoteDialog = useCallback((noteItem) => {
+    if (!noteItem) {
+      return;
+    }
+    setDeleteNoteDialog({
+      open: true,
+      noteId: noteItem._id || null,
+      preview: noteItem.note || '',
+      date: noteItem.date || null,
+    });
+    setDeleteNoteError('');
+  }, []);
+
+  const closeDeleteNoteDialog = useCallback(() => {
+    setDeleteNoteDialog({
+      open: false,
+      noteId: null,
+      preview: '',
+      date: null,
+    });
+    setDeleteNoteError('');
+  }, []);
+
+  const handleDeletePatientNote = async () => {
+    if (!deleteNoteDialog.noteId) {
+      return;
+    }
+    setDeletingNote(true);
+    setDeleteNoteError('');
+    try {
+      await apiClient.delete(`/api/notes/${deleteNoteDialog.noteId}`);
+      setDetails((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const currentNotes = prev.notes || [];
+        return {
+          ...prev,
+          notes: currentNotes.filter((noteItem) => noteItem._id !== deleteNoteDialog.noteId),
+        };
+      });
+      setNoteToast({ message: 'Note deleted successfully.', severity: 'success' });
+      closeDeleteNoteDialog();
+    } catch (err) {
+      console.error('Failed to delete patient note', err);
+      const message = err?.response?.data?.message || 'Failed to delete note.';
+      setDeleteNoteError(message);
+    } finally {
+      setDeletingNote(false);
     }
   };
 
@@ -618,22 +754,51 @@ const PatientDetails = () => {
       ? `#${patient.primary_therapist_id}`
       : null;
 
-  const noteColumns = [
-    {
-      id: 'date',
-      label: 'Date',
-      type: 'date',
-      minWidth: 180,
-      valueGetter: (row) => row.date,
-      render: (row) => new Date(row.date).toLocaleString(),
-    },
-    {
-      id: 'note',
-      label: 'Note',
-      minWidth: 320,
-      render: (row) => row.note || '--',
-    },
-  ];
+  const noteColumns = useMemo(() => {
+    const columns = [
+      {
+        id: 'date',
+        label: 'Date',
+        type: 'date',
+        minWidth: 180,
+        valueGetter: (row) => row.date,
+        render: (row) => new Date(row.date).toLocaleString(),
+      },
+      {
+        id: 'note',
+        label: 'Note',
+        minWidth: 320,
+        render: (row) => row.note || '--',
+      },
+    ];
+
+    if (canEditNotes) {
+      columns.push({
+        id: 'actions',
+        label: 'Actions',
+        minWidth: 140,
+        align: 'right',
+        sortable: false,
+        filterable: false,
+        render: (row) => (
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Tooltip title="Edit note">
+              <IconButton size="small" onClick={() => openEditNoteDialog(row)}>
+                <EditIcon fontSize="inherit" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Delete note">
+              <IconButton size="small" color="error" onClick={() => openDeleteNoteDialog(row)}>
+                <DeleteIcon fontSize="inherit" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        ),
+      });
+    }
+
+    return columns;
+  }, [canEditNotes, openDeleteNoteDialog, openEditNoteDialog]);
 
   const treatmentColumns = [
     {
@@ -1106,6 +1271,16 @@ const PatientDetails = () => {
             </Alert>
           </Snackbar>
           <Snackbar
+            open={Boolean(noteToast.message)}
+            autoHideDuration={3500}
+            onClose={handleNoteToastClose}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          >
+            <Alert severity={noteToast.severity} onClose={handleNoteToastClose} sx={{ width: '100%' }}>
+              {noteToast.message}
+            </Alert>
+          </Snackbar>
+          <Snackbar
             open={Boolean(exportSuccess)}
             autoHideDuration={3500}
             onClose={() => setExportSuccess('')}
@@ -1161,6 +1336,89 @@ const PatientDetails = () => {
             </Button>
           </DialogActions>
         </Dialog>
+      )}
+
+      {canEditNotes && (
+        <>
+          <Dialog open={editNoteDialog.open} onClose={closeEditNoteDialog} maxWidth="sm" fullWidth>
+            <DialogTitle>Edit Note</DialogTitle>
+            <DialogContent dividers>
+              <TextField
+                label="Note"
+                fullWidth
+                multiline
+                minRows={3}
+                value={editNoteDialog.value}
+                onChange={(event) => setEditNoteDialog((prev) => ({ ...prev, value: event.target.value }))}
+                autoFocus
+              />
+              {editingNoteError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {editingNoteError}
+                </Alert>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={closeEditNoteDialog} disabled={savingEditedNote} sx={{ color: '#fff' }}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleUpdatePatientNote}
+                variant="contained"
+                disabled={savingEditedNote}
+              >
+                {savingEditedNote ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          <Dialog open={deleteNoteDialog.open} onClose={closeDeleteNoteDialog} maxWidth="xs" fullWidth>
+            <DialogTitle>Delete Note</DialogTitle>
+            <DialogContent dividers>
+              <Typography gutterBottom>
+                This will permanently remove the selected note for <strong>{patientDisplayName}</strong>.
+              </Typography>
+              {deleteNoteDialog.date && (
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Added on {new Date(deleteNoteDialog.date).toLocaleString()}
+                </Typography>
+              )}
+              {deleteNoteDialog.preview && (
+                <Box
+                  sx={{
+                    mt: 1,
+                    p: 2,
+                    borderRadius: 1,
+                    backgroundColor: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(148, 163, 184, 0.24)',
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Note preview
+                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-line', mt: 0.5 }}>
+                    {deleteNoteDialog.preview.length > 320
+                      ? `${deleteNoteDialog.preview.slice(0, 320)}...`
+                      : deleteNoteDialog.preview}
+                  </Typography>
+                </Box>
+              )}
+              {deleteNoteError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {deleteNoteError}
+                </Alert>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={closeDeleteNoteDialog} disabled={deletingNote} sx={{ color: '#fff' }}>
+                Cancel
+              </Button>
+              <Button onClick={handleDeletePatientNote} color="error" variant="contained" disabled={deletingNote}>
+                {deletingNote ? 'Deleting...' : 'Delete'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </>
       )}
 
       <Card className={classes.section}>

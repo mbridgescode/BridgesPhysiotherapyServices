@@ -1,4 +1,5 @@
 const express = require('express');
+const { Types } = require('mongoose');
 const Note = require('../models/notes');
 const Patient = require('../models/patients');
 const { authenticate, authorize } = require('../middleware/auth');
@@ -104,6 +105,141 @@ router.get(
       return res.json({
         success: true,
         notes,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
+
+router.put(
+  '/:noteId',
+  authenticate,
+  authorize('admin', 'therapist'),
+  async (req, res, next) => {
+    try {
+      const { noteId } = req.params;
+      if (!Types.ObjectId.isValid(noteId)) {
+        return res.status(400).json({ success: false, message: 'Invalid note id' });
+      }
+
+      const existingNote = await Note.findById(noteId);
+      if (!existingNote) {
+        return res.status(404).json({ success: false, message: 'Note not found' });
+      }
+
+      const patient = await Patient.findOne({ patient_id: existingNote.patient_id });
+      if (!patient) {
+        return res.status(404).json({ success: false, message: 'Patient not found' });
+      }
+
+      if (!userCanAccessPatient(patient.toObject ? patient.toObject() : patient, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
+      const allowedFields = [
+        'note',
+        'visibility',
+        'type',
+        'date',
+        'attachments',
+        'appointment_id',
+        'employeeID',
+      ];
+      const updates = {};
+
+      allowedFields.forEach((field) => {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
+      });
+
+      if ('note' in req.body) {
+        const trimmedNote = typeof req.body.note === 'string' ? req.body.note.trim() : req.body.note;
+        if (!trimmedNote) {
+          return res.status(400).json({ success: false, message: 'Note cannot be empty' });
+        }
+        updates.note = trimmedNote;
+      }
+
+      if ('date' in updates && updates.date) {
+        updates.date = new Date(updates.date);
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ success: false, message: 'No updates provided' });
+      }
+
+      updates.updatedBy = req.user.id;
+
+      const updatedNote = await Note.findByIdAndUpdate(
+        noteId,
+        { $set: updates },
+        { new: true },
+      );
+
+      await recordAuditEvent({
+        event: 'note.update',
+        success: true,
+        actorId: req.user.id,
+        actorRole: req.user.role,
+        metadata: {
+          patient_id: existingNote.patient_id?.toString(),
+          note_id: noteId.toString(),
+        },
+      });
+
+      return res.json({
+        success: true,
+        note: updatedNote,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
+
+router.delete(
+  '/:noteId',
+  authenticate,
+  authorize('admin', 'therapist'),
+  async (req, res, next) => {
+    try {
+      const { noteId } = req.params;
+      if (!Types.ObjectId.isValid(noteId)) {
+        return res.status(400).json({ success: false, message: 'Invalid note id' });
+      }
+
+      const existingNote = await Note.findById(noteId);
+      if (!existingNote) {
+        return res.status(404).json({ success: false, message: 'Note not found' });
+      }
+
+      const patient = await Patient.findOne({ patient_id: existingNote.patient_id });
+      if (!patient) {
+        return res.status(404).json({ success: false, message: 'Patient not found' });
+      }
+
+      if (!userCanAccessPatient(patient.toObject ? patient.toObject() : patient, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
+      await existingNote.deleteOne();
+
+      await recordAuditEvent({
+        event: 'note.delete',
+        success: true,
+        actorId: req.user.id,
+        actorRole: req.user.role,
+        metadata: {
+          patient_id: existingNote.patient_id?.toString(),
+          note_id: noteId.toString(),
+        },
+      });
+
+      return res.json({
+        success: true,
+        message: 'Note deleted',
       });
     } catch (error) {
       return next(error);
