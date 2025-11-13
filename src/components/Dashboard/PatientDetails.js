@@ -3,6 +3,7 @@ import React, {
   useState,
   useMemo,
   useContext,
+  useCallback,
 } from 'react';
 import {
   Box,
@@ -15,6 +16,8 @@ import {
   TextField,
   Button,
   MenuItem,
+  FormControlLabel,
+  Switch,
   Alert,
   Snackbar,
   IconButton,
@@ -24,6 +27,7 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
+import Autocomplete from '@mui/material/Autocomplete';
 import { makeStyles } from '@mui/styles';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
@@ -34,6 +38,7 @@ import { UserContext } from '../../context/UserContext';
 import { AppointmentsContext } from '../../context/AppointmentsContext';
 import DataTable from '../common/DataTable';
 import useTreatmentNoteTemplates from '../../hooks/useTreatmentNoteTemplates';
+import useTherapists from '../../hooks/useTherapists';
 
 const useStyles = makeStyles((theme) => ({
   section: {
@@ -51,6 +56,45 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'archived', label: 'Archived' },
+];
+
+const BILLING_MODE_OPTIONS = [
+  { value: 'individual', label: 'Individual billing' },
+  { value: 'monthly', label: 'Monthly billing' },
+];
+
+const normalizedStatus = (value) => {
+  const normalized = typeof value === 'string' ? value.toLowerCase() : '';
+  if (normalized === 'archived' || normalized === 'inactive') {
+    return 'archived';
+  }
+  return 'active';
+};
+
+const createEmptyFormState = () => ({
+  first_name: '',
+  surname: '',
+  preferred_name: '',
+  email: '',
+  phone: '',
+  status: 'active',
+  date_of_birth: '',
+  primaryTherapistId: '',
+  billing_mode: 'individual',
+  email_active: true,
+  address_line1: '',
+  address_line2: '',
+  address_city: '',
+  address_state: '',
+  address_postcode: '',
+  primary_contact_name: '',
+  primary_contact_email: '',
+  primary_contact_phone: '',
+});
+
 const currencyDisplay = (value, currency = 'GBP') => `${currency} ${Number(value || 0).toFixed(2)}`;
 
 const PatientDetails = () => {
@@ -59,6 +103,8 @@ const PatientDetails = () => {
   const { userData } = useContext(UserContext);
   const { refreshAppointments } = useContext(AppointmentsContext);
   const canEditNotes = ['admin', 'therapist'].includes(userData?.role);
+  const canEditPatient = ['admin', 'receptionist'].includes(userData?.role);
+  const canArchivePatient = userData?.role === 'admin';
 
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -79,6 +125,14 @@ const PatientDetails = () => {
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState('');
   const [exportError, setExportError] = useState('');
+  const [formState, setFormState] = useState(() => createEmptyFormState());
+  const [formErrors, setFormErrors] = useState({});
+  const [savingPatient, setSavingPatient] = useState(false);
+  const [patientToast, setPatientToast] = useState({ message: '', severity: 'success' });
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingPatient, setArchivingPatient] = useState(false);
+  const [archiveError, setArchiveError] = useState('');
+  const { therapists, loading: therapistsLoading, error: therapistsError } = useTherapists();
 
   const patient = details?.patient || null;
   const treatments = details?.treatments || [];
@@ -92,6 +146,104 @@ const PatientDetails = () => {
     error: templatesFetchError,
     refreshTemplates: refreshNoteTemplates,
   } = useTreatmentNoteTemplates({ enabled: canEditNotes });
+  const therapistOptions = useMemo(() => therapists, [therapists]);
+
+  const mapPatientToFormState = useCallback((patientData) => {
+    if (!patientData) {
+      return createEmptyFormState();
+    }
+    const rawTherapistId = patientData.primaryTherapist?._id || patientData.primaryTherapist?.id;
+    const therapistId = rawTherapistId && rawTherapistId.toString ? rawTherapistId.toString() : rawTherapistId;
+    return {
+      ...createEmptyFormState(),
+      first_name: patientData.first_name || '',
+      surname: patientData.surname || '',
+      preferred_name: patientData.preferred_name || '',
+      email: patientData.email || '',
+      phone: patientData.phone || '',
+      status: normalizedStatus(patientData.status),
+      date_of_birth: patientData.date_of_birth
+        ? new Date(patientData.date_of_birth).toISOString().split('T')[0]
+        : '',
+      primaryTherapistId: therapistId ? String(therapistId) : '',
+      billing_mode: patientData.billing_mode || 'individual',
+      email_active: patientData.email_active !== false,
+      address_line1: patientData.address?.line1 || '',
+      address_line2: patientData.address?.line2 || '',
+      address_city: patientData.address?.city || '',
+      address_state: patientData.address?.state || '',
+      address_postcode: patientData.address?.postcode || '',
+      primary_contact_name: patientData.primary_contact_name || '',
+      primary_contact_email: patientData.primary_contact_email || '',
+      primary_contact_phone: patientData.primary_contact_phone || '',
+    };
+  }, []);
+
+  useEffect(() => {
+    if (patient) {
+      setFormState(mapPatientToFormState(patient));
+      setFormErrors({});
+    }
+  }, [patient, mapPatientToFormState]);
+
+  const primaryTherapistSelection = useMemo(
+    () => therapistOptions.find((therapist) => therapist.id === formState.primaryTherapistId) || null,
+    [therapistOptions, formState.primaryTherapistId],
+  );
+
+  const patientDisplayName = useMemo(() => {
+    const nameParts = [formState.first_name, formState.surname]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter(Boolean);
+    if (nameParts.length) {
+      return nameParts.join(' ');
+    }
+    if (typeof formState.preferred_name === 'string' && formState.preferred_name.trim()) {
+      return formState.preferred_name.trim();
+    }
+    if (patient?.patient_id) {
+      return `Patient #${patient.patient_id}`;
+    }
+    return 'Patient';
+  }, [formState, patient]);
+
+  const nextAppointment = useMemo(() => {
+    if (!treatments.length) {
+      return null;
+    }
+    return (
+      [...treatments]
+        .filter((appt) => appt.status === 'scheduled')
+        .sort((a, b) => new Date(a.date) - new Date(b.date))[0] || null
+    );
+  }, [treatments]);
+
+  const validatePatientForm = useCallback(() => {
+    const errors = {};
+    if (!formState.first_name.trim()) {
+      errors.first_name = 'First name is required';
+    }
+    if (!formState.surname.trim()) {
+      errors.surname = 'Surname is required';
+    }
+    if (!formState.email.trim()) {
+      errors.email = 'Email is required';
+    }
+    if (!formState.phone.trim()) {
+      errors.phone = 'Phone is required';
+    }
+    if (!formState.status) {
+      errors.status = 'Status is required';
+    } else if (!STATUS_OPTIONS.some((option) => option.value === formState.status)) {
+      errors.status = 'Status must be Active or Archived';
+    }
+    return errors;
+  }, [formState]);
+
+  const handleFormFieldChange = (field, value) => {
+    setFormState((prev) => ({ ...prev, [field]: value }));
+    setFormErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
 
   const loadDetails = async () => {
     setLoading(true);
@@ -180,6 +332,114 @@ const PatientDetails = () => {
       setExportError(err?.response?.data?.message || 'Unable to export patient data.');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleSavePatientRecord = async () => {
+    if (!patient || !canEditPatient) {
+      return;
+    }
+    const validationErrors = validatePatientForm();
+    if (Object.keys(validationErrors).length) {
+      setFormErrors(validationErrors);
+      return;
+    }
+    setSavingPatient(true);
+    setPatientToast((prev) => ({ ...prev, message: '' }));
+    try {
+      const payload = {
+        ...formState,
+        status: normalizedStatus(formState.status),
+        primaryTherapistId: formState.primaryTherapistId || undefined,
+        date_of_birth: formState.date_of_birth || undefined,
+        primary_contact_name: formState.primary_contact_name.trim() || undefined,
+        primary_contact_email: formState.primary_contact_email.trim() || undefined,
+        primary_contact_phone: formState.primary_contact_phone.trim() || undefined,
+      };
+      payload.billing_mode = formState.billing_mode || 'individual';
+      payload.email_active = formState.email_active !== false;
+      const addressPayload = {
+        line1: formState.address_line1.trim(),
+        line2: formState.address_line2.trim(),
+        city: formState.address_city.trim(),
+        state: formState.address_state.trim(),
+        postcode: formState.address_postcode.trim(),
+      };
+      const hasAddress = Object.values(addressPayload).some(Boolean);
+      const shouldClearAddress = Boolean(patient.address) && !hasAddress;
+      if (hasAddress) {
+        payload.address = addressPayload;
+      } else if (shouldClearAddress) {
+        payload.address = null;
+      }
+      [
+        'address_line1',
+        'address_line2',
+        'address_city',
+        'address_state',
+        'address_postcode',
+      ].forEach((field) => {
+        delete payload[field];
+      });
+      const response = await apiClient.put(`/api/patients/${patient.patient_id}`, payload);
+      const updatedPatient = response?.data?.patient;
+      if (updatedPatient) {
+        setDetails((prev) => ({
+          ...prev,
+          patient: updatedPatient,
+        }));
+        setFormState(mapPatientToFormState(updatedPatient));
+      }
+      setPatientToast({ message: 'Patient updated successfully', severity: 'success' });
+    } catch (err) {
+      const message = err?.response?.data?.message || 'Failed to update patient';
+      setPatientToast({ message, severity: 'error' });
+    } finally {
+      setSavingPatient(false);
+    }
+  };
+
+  const handleResetPatientForm = () => {
+    if (!patient) {
+      setFormState(createEmptyFormState());
+      setFormErrors({});
+      return;
+    }
+    setFormErrors({});
+    setFormState(mapPatientToFormState(patient));
+  };
+
+  const closeArchiveDialog = () => {
+    if (archivingPatient) {
+      return;
+    }
+    setArchiveDialogOpen(false);
+    setArchiveError('');
+  };
+
+  const handleArchivePatient = async () => {
+    if (!patient || !canArchivePatient) {
+      return;
+    }
+    setArchivingPatient(true);
+    setArchiveError('');
+    try {
+      const response = await apiClient.delete(`/api/patients/${patient.patient_id}`);
+      const updatedPatient = response?.data?.patient;
+      if (updatedPatient) {
+        setDetails((prev) => ({
+          ...prev,
+          patient: updatedPatient,
+        }));
+        setFormState(mapPatientToFormState(updatedPatient));
+      }
+      setArchiveDialogOpen(false);
+      setPatientToast({ message: 'Patient archived successfully', severity: 'success' });
+    } catch (err) {
+      const message = err?.response?.data?.message || 'Failed to archive patient';
+      setArchiveError(message);
+    } finally {
+      setArchivingPatient(false);
     }
   };
 
@@ -526,60 +786,325 @@ const PatientDetails = () => {
           <Box
             display="flex"
             justifyContent="space-between"
-            alignItems="center"
+            alignItems={{ xs: 'flex-start', md: 'center' }}
             flexWrap="wrap"
             gap={2}
             mb={2}
           >
-            <Typography variant="h5">
-              {patient.first_name} {patient.surname}
-            </Typography>
-            {canExportPatient && (
-              <Button
-                variant="outlined"
-                onClick={handleExportPatient}
-                disabled={exporting}
-              >
-                {exporting ? 'Preparing export...' : 'Export JSON'}
-              </Button>
-            )}
-          </Box>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={4}>
-              <Typography variant="body2" color="textSecondary">
-                Contact
+            <Box>
+              <Typography variant="h5">{patientDisplayName}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Patient ID: #{patient.patient_id}
               </Typography>
-              <Typography>{patient.email}</Typography>
-              <Typography>{patient.phone}</Typography>
-            </Grid>
-            {(patient.primary_contact_name
-              || patient.primary_contact_email
-              || patient.primary_contact_phone) && (
-              <Grid item xs={12} md={4}>
-                <Typography variant="body2" color="textSecondary">
-                  Primary Contact
+              {nextAppointment && (
+                <Typography variant="body2" color="text.secondary">
+                  Next appointment:{' '}
+                  {new Date(nextAppointment.date).toLocaleString('en-GB')}
+                  {nextAppointment.treatment_description
+                    ? ` - ${nextAppointment.treatment_description}`
+                    : ''}
                 </Typography>
-                {patient.primary_contact_name && <Typography>{patient.primary_contact_name}</Typography>}
-                {patient.primary_contact_email && <Typography>{patient.primary_contact_email}</Typography>}
-                {patient.primary_contact_phone && <Typography>{patient.primary_contact_phone}</Typography>}
-              </Grid>
-            )}
-            <Grid item xs={12} md={4}>
-              <Typography variant="body2" color="textSecondary">
-                Status
-              </Typography>
-              <Typography>{patient.status}</Typography>
-              {therapistLabel && (
-                <Typography>Primary Therapist: {therapistLabel}</Typography>
               )}
+              {therapistLabel && (
+                <Typography variant="body2" color="text.secondary">
+                  Primary Therapist: {therapistLabel}
+                </Typography>
+              )}
+            </Box>
+            <Box display="flex" flexWrap="wrap" gap={1} justifyContent="flex-end">
+              {canExportPatient && (
+                <Button
+                  variant="outlined"
+                  onClick={handleExportPatient}
+                  disabled={exporting}
+                >
+                  {exporting ? 'Preparing export...' : 'Export JSON'}
+                </Button>
+              )}
+              {canEditPatient && (
+                <>
+                  <Button
+                    variant="outlined"
+                    onClick={handleResetPatientForm}
+                    disabled={savingPatient}
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={handleSavePatientRecord}
+                    disabled={savingPatient}
+                  >
+                    {savingPatient ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </>
+              )}
+              {canArchivePatient && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => {
+                    setArchiveError('');
+                    setArchiveDialogOpen(true);
+                  }}
+                  disabled={archivingPatient || patient.status === 'archived'}
+                >
+                  {patient.status === 'archived' ? 'Archived' : 'Archive Patient'}
+                </Button>
+              )}
+            </Box>
+          </Box>
+          {patient.status === 'archived' && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              This patient is archived. Update the status to Active to restore them to active lists.
+            </Alert>
+          )}
+          {therapistsError && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {therapistsError}. Therapist assignment will remain optional until the list loads.
+            </Alert>
+          )}
+          {!canEditPatient && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              You have read-only access to this patient. Contact an administrator if you need to make
+              changes.
+            </Alert>
+          )}
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="First Name"
+                fullWidth
+                required
+                value={formState.first_name}
+                onChange={(event) => handleFormFieldChange('first_name', event.target.value)}
+                error={Boolean(formErrors.first_name)}
+                helperText={formErrors.first_name}
+                disabled={!canEditPatient}
+              />
             </Grid>
-            <Grid item xs={12} md={4}>
-              <Typography variant="body2" color="textSecondary">
-                Created
-              </Typography>
-              <Typography>{new Date(patient.createdAt).toLocaleDateString('en-GB')}</Typography>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Surname"
+                fullWidth
+                required
+                value={formState.surname}
+                onChange={(event) => handleFormFieldChange('surname', event.target.value)}
+                error={Boolean(formErrors.surname)}
+                helperText={formErrors.surname}
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Preferred Name"
+                fullWidth
+                value={formState.preferred_name}
+                onChange={(event) => handleFormFieldChange('preferred_name', event.target.value)}
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Date of Birth"
+                type="date"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={formState.date_of_birth}
+                onChange={(event) => handleFormFieldChange('date_of_birth', event.target.value)}
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Email"
+                type="email"
+                fullWidth
+                required
+                value={formState.email}
+                onChange={(event) => handleFormFieldChange('email', event.target.value)}
+                error={Boolean(formErrors.email)}
+                helperText={formErrors.email}
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Phone"
+                fullWidth
+                required
+                value={formState.phone}
+                onChange={(event) => handleFormFieldChange('phone', event.target.value)}
+                error={Boolean(formErrors.phone)}
+                helperText={formErrors.phone}
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Status"
+                select
+                fullWidth
+                required
+                value={formState.status}
+                onChange={(event) => handleFormFieldChange('status', event.target.value)}
+                error={Boolean(formErrors.status)}
+                helperText={formErrors.status}
+                disabled={!canEditPatient}
+              >
+                {STATUS_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Billing Mode"
+                select
+                fullWidth
+                value={formState.billing_mode}
+                onChange={(event) => handleFormFieldChange('billing_mode', event.target.value)}
+                disabled={!canEditPatient}
+              >
+                {BILLING_MODE_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Autocomplete
+                options={therapistOptions}
+                value={primaryTherapistSelection}
+                onChange={(event, newValue) => {
+                  handleFormFieldChange('primaryTherapistId', newValue?.id || '');
+                }}
+                getOptionLabel={(option) => {
+                  if (!option) {
+                    return '';
+                  }
+                  return option.employeeID ? `${option.name} (#${option.employeeID})` : option.name;
+                }}
+                loading={therapistsLoading}
+                disabled={!canEditPatient}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Primary Therapist"
+                    placeholder="Select therapist"
+                    helperText={therapistsLoading ? 'Loading therapists...' : 'Optional'}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={formState.email_active !== false}
+                    onChange={(event) => handleFormFieldChange('email_active', event.target.checked)}
+                    disabled={!canEditPatient}
+                  />
+                )}
+                label="Email Active"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Address Line 1"
+                fullWidth
+                value={formState.address_line1}
+                onChange={(event) => handleFormFieldChange('address_line1', event.target.value)}
+                helperText="Street address"
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Address Line 2"
+                fullWidth
+                value={formState.address_line2}
+                onChange={(event) => handleFormFieldChange('address_line2', event.target.value)}
+                helperText="Apartment, suite, etc. (optional)"
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="City"
+                fullWidth
+                value={formState.address_city}
+                onChange={(event) => handleFormFieldChange('address_city', event.target.value)}
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="State / County"
+                fullWidth
+                value={formState.address_state}
+                onChange={(event) => handleFormFieldChange('address_state', event.target.value)}
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Postcode"
+                fullWidth
+                value={formState.address_postcode}
+                onChange={(event) => handleFormFieldChange('address_postcode', event.target.value)}
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Primary Contact Name"
+                fullWidth
+                value={formState.primary_contact_name}
+                onChange={(event) => handleFormFieldChange('primary_contact_name', event.target.value)}
+                helperText="Optional"
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Primary Contact Email"
+                type="email"
+                fullWidth
+                value={formState.primary_contact_email}
+                onChange={(event) => handleFormFieldChange('primary_contact_email', event.target.value)}
+                helperText="Optional"
+                disabled={!canEditPatient}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Primary Contact Phone"
+                fullWidth
+                value={formState.primary_contact_phone}
+                onChange={(event) => handleFormFieldChange('primary_contact_phone', event.target.value)}
+                helperText="Optional"
+                disabled={!canEditPatient}
+              />
             </Grid>
           </Grid>
+          <Snackbar
+            open={Boolean(patientToast.message)}
+            autoHideDuration={4000}
+            onClose={() => setPatientToast((prev) => ({ ...prev, message: '' }))}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          >
+            <Alert
+              severity={patientToast.severity}
+              onClose={() => setPatientToast((prev) => ({ ...prev, message: '' }))}
+              sx={{ width: '100%' }}
+            >
+              {patientToast.message}
+            </Alert>
+          </Snackbar>
           <Snackbar
             open={Boolean(exportSuccess)}
             autoHideDuration={3500}
@@ -600,8 +1125,43 @@ const PatientDetails = () => {
               {exportError}
             </Alert>
           </Snackbar>
-        </CardContent>
+      </CardContent>
       </Card>
+
+      {canArchivePatient && (
+        <Dialog
+          open={archiveDialogOpen}
+          onClose={closeArchiveDialog}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>Archive Patient</DialogTitle>
+          <DialogContent dividers>
+            <Typography gutterBottom>
+              Are you sure you want to archive <strong>{patientDisplayName}</strong>? This will hide
+              the patient from active lists.
+            </Typography>
+            {archiveError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {archiveError}
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeArchiveDialog} disabled={archivingPatient} sx={{ color: '#fff' }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleArchivePatient}
+              color="error"
+              variant="contained"
+              disabled={archivingPatient}
+            >
+              {archivingPatient ? 'Archiving...' : 'Archive'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
 
       <Card className={classes.section}>
         <CardContent>

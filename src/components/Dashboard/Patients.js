@@ -34,8 +34,6 @@ import {
 import { makeStyles } from '@mui/styles';
 import { useNavigate } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import apiClient from '../../utils/apiClient';
 import {
   getAuthToken,
@@ -126,15 +124,10 @@ const Patients = ({ userData }) => {
   const [error, setError] = useState(null);
   const [token, setToken] = useState(() => getAuthToken());
   const [formOpen, setFormOpen] = useState(false);
-  const [formMode, setFormMode] = useState('create');
-  const [editingPatient, setEditingPatient] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
   const [toast, setToast] = useState({ message: '', severity: 'success' });
-  const [deleteCandidate, setDeleteCandidate] = useState(null);
-  const [deletingPatient, setDeletingPatient] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
   const { therapists, loading: therapistsLoading, error: therapistsError } = useTherapists();
   const [formState, setFormState] = useState(() => createEmptyFormState());
   const [patientScope, setPatientScope] = useState(userData?.role === 'therapist' ? 'mine' : 'all');
@@ -243,8 +236,6 @@ const Patients = ({ userData }) => {
       setFormErrors({});
       setSubmitError(null);
       setFormState(createEmptyFormState());
-      setEditingPatient(null);
-      setFormMode('create');
     }
   }, [formOpen]);
 
@@ -266,22 +257,6 @@ const Patients = ({ userData }) => {
       errors.status = 'Status is required';
     } else if (!STATUS_OPTIONS.some((option) => option.value === formState.status)) {
       errors.status = 'Status must be Active or Archived';
-    }
-
-    const primaryContactName = formState.primary_contact_name.trim();
-    const primaryContactEmail = formState.primary_contact_email.trim();
-    const primaryContactPhone = formState.primary_contact_phone.trim();
-    const hasPrimaryContact = Boolean(primaryContactName || primaryContactEmail || primaryContactPhone);
-    if (hasPrimaryContact) {
-      if (!primaryContactName) {
-        errors.primary_contact_name = 'Primary contact name is required when adding a contact';
-      }
-      if (!primaryContactEmail) {
-        errors.primary_contact_email = 'Primary contact email is required when adding a contact';
-      }
-      if (!primaryContactPhone) {
-        errors.primary_contact_phone = 'Primary contact phone is required when adding a contact';
-      }
     }
 
     return errors;
@@ -338,7 +313,6 @@ const Patients = ({ userData }) => {
   }, [navigate]);
 
   const canManagePatients = ['admin', 'receptionist'].includes(userData?.role);
-  const canDeletePatients = userData?.role === 'admin';
   const canToggleEmailActive = ['admin', 'receptionist', 'therapist'].includes(userData?.role);
 
   const handleEmailActiveToggle = useCallback(async (patient, nextValue) => {
@@ -379,6 +353,29 @@ const Patients = ({ userData }) => {
     }
   }, [setPatients, showToast]);
 
+  const formatPatientName = useCallback((patient) => {
+    if (!patient) {
+      return 'Patient';
+    }
+    if (typeof patient.patient_name === 'string' && patient.patient_name.trim()) {
+      return patient.patient_name.trim();
+    }
+    const composedName = [patient.first_name, patient.surname]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter(Boolean)
+      .join(' ');
+    if (composedName) {
+      return composedName;
+    }
+    if (typeof patient.preferred_name === 'string' && patient.preferred_name.trim()) {
+      return patient.preferred_name.trim();
+    }
+    if (patient.email) {
+      return patient.email;
+    }
+    return `Patient #${patient.patient_id || ''}`.trim();
+  }, []);
+
   const formatPrimaryTherapist = useCallback((row) => {
     if (row.primaryTherapist?.username) {
       const suffix = row.primaryTherapist.employeeID ? ` (#${row.primaryTherapist.employeeID})` : '';
@@ -410,44 +407,9 @@ const Patients = ({ userData }) => {
   };
 
   const handleStartCreate = () => {
-    setFormMode('create');
-    setEditingPatient(null);
     setFormErrors({});
     setSubmitError(null);
     setFormState(createEmptyFormState());
-    setFormOpen(true);
-  };
-
-  const handleStartEdit = (patient) => {
-    setFormMode('edit');
-    setEditingPatient(patient);
-    setFormErrors({});
-    setSubmitError(null);
-    setFormState({
-      first_name: patient.first_name || '',
-      surname: patient.surname || '',
-      email: patient.email || '',
-      phone: patient.phone || '',
-      address_line1: patient.address?.line1 || '',
-      address_line2: patient.address?.line2 || '',
-      address_city: patient.address?.city || '',
-      address_state: patient.address?.state || '',
-      address_postcode: patient.address?.postcode || '',
-      primary_contact_name: patient.primary_contact_name || '',
-      primary_contact_email: patient.primary_contact_email || '',
-      primary_contact_phone: patient.primary_contact_phone || '',
-      status: normalizedStatus(patient.status),
-      preferred_name: patient.preferred_name || '',
-      date_of_birth: patient.date_of_birth
-        ? new Date(patient.date_of_birth).toISOString().split('T')[0]
-        : '',
-      primaryTherapistId: (() => {
-        const therapistId = patient.primaryTherapist?._id || patient.primaryTherapist?.id;
-        return therapistId ? String(therapistId) : '';
-      })(),
-      billing_mode: patient.billing_mode || 'individual',
-      email_active: patient.email_active !== false,
-    });
     setFormOpen(true);
   };
 
@@ -461,35 +423,24 @@ const Patients = ({ userData }) => {
 
   const patientColumns = [
     {
-      id: 'first_name',
-      label: 'First Name',
-      minWidth: 140,
+      id: 'patient_name',
+      label: 'Patient Name',
+      minWidth: 220,
+      valueGetter: (row) => formatPatientName(row),
+      render: (row) => (
+        <Button
+          variant="text"
+          color="primary"
+          onClick={() => handleViewDetails(row.patient_id)}
+          sx={{ textTransform: 'none', padding: 0, minWidth: 0 }}
+        >
+          {formatPatientName(row)}
+        </Button>
+      ),
     },
-    {
-      id: 'surname',
-      label: 'Surname',
-      minWidth: 140,
-    },
-    {
-      id: 'email',
-      label: 'Email',
-      minWidth: 210,
-    },
-    {
-      id: 'phone',
-      label: 'Phone',
-      minWidth: 150,
-    },
-  {
-    id: 'address',
-    label: 'Address',
-    minWidth: 240,
-    valueGetter: (row) => formatPatientAddress(row.address),
-    render: (row) => formatPatientAddress(row.address) || '--',
-  },
     {
       id: 'status',
-      label: 'Status (Active / Archived)',
+      label: 'Status',
       type: 'select',
       options: patientStatusOptions,
       minWidth: 140,
@@ -521,14 +472,14 @@ const Patients = ({ userData }) => {
       render: (row) => (row.billing_mode === 'monthly' ? 'Monthly' : 'Individual'),
     },
     {
-      id: 'primaryTherapist',
+      id: 'primary_therapist',
       label: 'Primary Therapist',
       minWidth: 220,
       valueGetter: (row) => formatPrimaryTherapist(row),
       render: (row) => formatPrimaryTherapist(row),
     },
     {
-      id: 'upcomingAppointment',
+      id: 'next_appointment',
       label: 'Next Appointment',
       type: 'date',
       minWidth: 190,
@@ -538,74 +489,7 @@ const Patients = ({ userData }) => {
           ? new Date(row.upcomingAppointment.date).toLocaleString()
           : 'None',
     },
-    {
-      id: 'details',
-      label: 'View Details',
-      sortable: false,
-      filterable: false,
-      align: 'center',
-      minWidth: 120,
-      render: (row) => (
-        <Button
-          size="small"
-          onClick={() => handleViewDetails(row.patient_id)}
-          sx={{ color: '#fff' }}
-        >
-          View Details
-        </Button>
-      ),
-    },
   ];
-
-  if (canManagePatients || canDeletePatients) {
-    patientColumns.push({
-      id: 'actions',
-      label: 'Actions',
-      sortable: false,
-      filterable: false,
-      align: 'center',
-      minWidth: 140,
-      render: (row) => (
-        <Box display="flex" justifyContent="center" gap={1}>
-          {canManagePatients && (
-            <Tooltip title="Edit patient">
-              <span>
-                <IconButton
-                  size="small"
-                  color="primary"
-                  onClick={() => handleStartEdit(row)}
-                >
-                  <EditOutlinedIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-          )}
-          {canDeletePatients && (
-            <Tooltip
-              title={row.status === 'archived' ? 'Patient already archived' : 'Delete patient'}
-            >
-              <span>
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={() => {
-                    if (row.status === 'archived') {
-                      return;
-                    }
-                    setDeleteCandidate(row);
-                    setDeleteError('');
-                  }}
-                  disabled={row.status === 'archived'}
-                >
-                  <DeleteOutlineIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-          )}
-        </Box>
-      ),
-    });
-  }
 
   const handleSubmitPatient = async () => {
     const validationErrors = validatePatientForm();
@@ -636,14 +520,8 @@ const Patients = ({ userData }) => {
         postcode: formState.address_postcode.trim(),
       };
       const hasAddress = Object.values(addressPayload).some(Boolean);
-      const shouldClearAddress = formMode === 'edit'
-        && Boolean(editingPatient?.address)
-        && !hasAddress;
-
       if (hasAddress) {
         payload.address = addressPayload;
-      } else if (shouldClearAddress) {
-        payload.address = null;
       }
 
       [
@@ -655,71 +533,20 @@ const Patients = ({ userData }) => {
       ].forEach((field) => {
         delete payload[field];
       });
-      let response;
-      if (formMode === 'edit' && editingPatient) {
-        response = await apiClient.put(`/api/patients/${editingPatient.patient_id}`, payload);
-        if (response?.data?.patient) {
-          setPatients((prev) =>
-            prev.map((patient) =>
-              patient.patient_id === editingPatient.patient_id ? response.data.patient : patient,
-            ),
-          );
-        }
-        showToast('Patient updated successfully');
-      } else {
-        response = await apiClient.post('/api/patients', payload);
-        if (response?.data?.patient) {
-          setPatients((prev) => [response.data.patient, ...prev]);
-        }
-        showToast('Patient added successfully');
+      const response = await apiClient.post('/api/patients', payload);
+      if (response?.data?.patient) {
+        setPatients((prev) => [response.data.patient, ...prev]);
       }
+      showToast('Patient added successfully');
       setFormOpen(false);
       setFormErrors({});
       setFormState(createEmptyFormState());
-      setEditingPatient(null);
     } catch (err) {
-      const message = err?.response?.data?.message
-        || `Failed to ${formMode === 'edit' ? 'update' : 'create'} patient`;
+      const message = err?.response?.data?.message || 'Failed to create patient';
       console.error('Failed to save patient', err);
       setSubmitError(message);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleCloseDeleteDialog = () => {
-    if (deletingPatient) {
-      return;
-    }
-    setDeleteCandidate(null);
-    setDeleteError('');
-  };
-
-  const handleDeletePatient = async () => {
-    if (!deleteCandidate) {
-      return;
-    }
-    setDeletingPatient(true);
-    setDeleteError('');
-    try {
-      const response = await apiClient.delete(`/api/patients/${deleteCandidate.patient_id}`);
-      const updatedPatient = response.data?.patient;
-      if (updatedPatient) {
-        setPatients((prev) =>
-          prev.map((patient) =>
-            patient.patient_id === updatedPatient.patient_id ? updatedPatient : patient,
-          ),
-        );
-      } else {
-        setPatients((prev) => prev.filter((patient) => patient.patient_id !== deleteCandidate.patient_id));
-      }
-      showToast('Patient archived successfully');
-      setDeleteCandidate(null);
-    } catch (err) {
-      const message = err?.response?.data?.message || 'Failed to delete patient';
-      setDeleteError(message);
-    } finally {
-      setDeletingPatient(false);
     }
   };
 
@@ -799,7 +626,7 @@ const Patients = ({ userData }) => {
       </CardContent>
 
       <Dialog open={formOpen} onClose={handleCloseForm} maxWidth="sm" fullWidth>
-        <DialogTitle>{formMode === 'edit' ? 'Edit Patient' : 'Add Patient'}</DialogTitle>
+        <DialogTitle>Add Patient</DialogTitle>
         <DialogContent dividers>
           {(therapistsError || submitError) && (
             <Box mb={2}>
@@ -954,7 +781,6 @@ const Patients = ({ userData }) => {
                 type="email"
                 fullWidth
                 value={formState.primary_contact_email}
-                required
                 onChange={(event) => {
                   const { value } = event.target;
                   setFormState((prev) => ({ ...prev, primary_contact_email: value }));
@@ -969,7 +795,6 @@ const Patients = ({ userData }) => {
                 label="Primary Contact Phone"
                 fullWidth
                 value={formState.primary_contact_phone}
-                required
                 onChange={(event) => {
                   const { value } = event.target;
                   setFormState((prev) => ({ ...prev, primary_contact_phone: value }));
@@ -1084,50 +909,7 @@ const Patients = ({ userData }) => {
             Cancel
           </Button>
           <Button onClick={handleSubmitPatient} variant="contained" disabled={submitting}>
-            {submitting
-              ? 'Saving...'
-              : formMode === 'edit'
-                ? 'Save Changes'
-                : 'Save Patient'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog
-        open={Boolean(deleteCandidate)}
-        onClose={handleCloseDeleteDialog}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>Delete Patient</DialogTitle>
-        <DialogContent dividers>
-          <Typography>
-            Are you sure you want to delete{' '}
-            <strong>
-              {deleteCandidate?.first_name} {deleteCandidate?.surname}
-            </strong>
-            ? This will archive the patient and hide them from active lists.
-          </Typography>
-          {deleteError && (
-            <Box mt={2}>
-              <Alert severity="error">{deleteError}</Alert>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={handleCloseDeleteDialog}
-            disabled={deletingPatient}
-            sx={{ color: '#fff' }}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleDeletePatient}
-            color="error"
-            variant="contained"
-            disabled={deletingPatient}
-          >
-            {deletingPatient ? 'Deleting...' : 'Delete'}
+            {submitting ? 'Saving...' : 'Save Patient'}
           </Button>
         </DialogActions>
       </Dialog>
