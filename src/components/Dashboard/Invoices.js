@@ -807,24 +807,35 @@ const Invoices = () => {
   }
 
   return (
-    <Card>
-      <CardContent>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h5">Invoices</Typography>
-          <Button variant="contained" onClick={openCreateDialog}>
-            New Invoice
-          </Button>
-        </Box>
-        <DataTable
-          columns={invoiceColumns}
-          rows={tableRows}
-          getRowId={tableRowId}
-          maxHeight="100%"
-          containerSx={{ height: '100%' }}
-          emptyMessage="No invoices to display."
-        />
-      </CardContent>
-
+    <Box
+      sx={{
+        flex: 1,
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 'calc(100vh - 160px)',
+      }}
+    >
+      <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h5">Invoices</Typography>
+            <Button variant="contained" onClick={openCreateDialog}>
+              New Invoice
+            </Button>
+          </Box>
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <DataTable
+              columns={invoiceColumns}
+              rows={tableRows}
+              getRowId={tableRowId}
+              maxHeight="100%"
+              containerSx={{ height: '100%' }}
+              emptyMessage="No invoices to display."
+            />
+          </Box>
+        </CardContent>
+      </Card>
       <Dialog open={createOpen} onClose={closeCreateDialog} maxWidth="lg" fullWidth>
         <DialogTitle>Create Invoice</DialogTitle>
         <DialogContent dividers>
@@ -1113,7 +1124,7 @@ const Invoices = () => {
           {toast.message}
         </Alert>
       </Snackbar>
-    </Card>
+    </Box>
   );
 };
 
