@@ -813,11 +813,27 @@ const Invoices = () => {
         width: '100%',
         display: 'flex',
         flexDirection: 'column',
+        alignItems: 'stretch',
         minHeight: 'calc(100vh - 160px)',
       }}
     >
-      <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Card
+        sx={{
+          flex: 1,
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <CardContent
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            minHeight: 0,
+          }}
+        >
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Typography variant="h5">Invoices</Typography>
             <Button variant="contained" onClick={openCreateDialog}>
@@ -830,7 +846,7 @@ const Invoices = () => {
               rows={tableRows}
               getRowId={tableRowId}
               maxHeight="100%"
-              containerSx={{ height: '100%' }}
+              containerSx={{ height: '100%', flex: 1, minHeight: 0, width: '100%' }}
               emptyMessage="No invoices to display."
             />
           </Box>
