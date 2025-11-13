@@ -132,6 +132,7 @@ const Patients = ({ userData }) => {
   const [formState, setFormState] = useState(() => createEmptyFormState());
   const [patientScope, setPatientScope] = useState(userData?.role === 'therapist' ? 'mine' : 'all');
   const [emailToggleBusy, setEmailToggleBusy] = useState({});
+  const [showArchived, setShowArchived] = useState(false);
   const navigate = useNavigate();
   const roleRef = useRef(userData?.role);
   const therapistOptions = useMemo(() => therapists, [therapists]);
@@ -281,32 +282,35 @@ const Patients = ({ userData }) => {
 
   const filteredPatients = useMemo(
     () =>
-      patients.filter((patient) => {
-        const searchValue = searchTerm.toLowerCase();
-        const matchesCore = [
-          patient.first_name,
-          patient.surname,
-          patient.email,
-          patient.phone,
-          patient.primary_contact_name,
-          patient.primary_contact_email,
-          patient.primary_contact_phone,
-          patient.status,
-          patient.primaryTherapist?.username,
-          formatPatientAddress(patient.address),
-        ].some((field) => field?.toLowerCase().includes(searchValue));
+      patients
+        .filter((patient) => {
+          const status = normalizedStatus(patient.status);
+          return showArchived ? status === 'archived' : status !== 'archived';
+        })
+        .filter((patient) => {
+          const searchValue = searchTerm.toLowerCase();
+          const matchesCore = [
+            patient.first_name,
+            patient.surname,
+            patient.email,
+            patient.phone,
+            patient.primary_contact_name,
+            patient.primary_contact_email,
+            patient.primary_contact_phone,
+            patient.status,
+            patient.primaryTherapist?.username,
+            formatPatientAddress(patient.address),
+          ].some((field) => field?.toLowerCase().includes(searchValue));
 
-        const matchesAppointment = patient.appointments?.some(
-          (appointment) =>
-            appointment.treatment_description?.toLowerCase().includes(searchValue),
-        );
+          const matchesAppointment = patient.appointments?.some(
+            (appointment) =>
+              appointment.treatment_description?.toLowerCase().includes(searchValue),
+          );
 
-        return matchesCore || matchesAppointment;
-      }),
-    [patients, searchTerm, formatPatientAddress],
+          return matchesCore || matchesAppointment;
+        }),
+    [patients, searchTerm, formatPatientAddress, showArchived],
   );
-
-  const patientStatusOptions = STATUS_OPTIONS;
 
   const handleViewDetails = useCallback((patientId) => {
     navigate(`/dashboard/patients/${patientId}`);
@@ -439,18 +443,6 @@ const Patients = ({ userData }) => {
       ),
     },
     {
-      id: 'status',
-      label: 'Status',
-      type: 'select',
-      options: patientStatusOptions,
-      minWidth: 140,
-      valueGetter: (row) => normalizedStatus(row.status),
-      render: (row) => {
-        const status = normalizedStatus(row.status);
-        return status === 'archived' ? 'Archived' : 'Active';
-      },
-    },
-    {
       id: 'email_active',
       label: 'Email Active',
       minWidth: 150,
@@ -565,19 +557,35 @@ const Patients = ({ userData }) => {
           className={classes.cardContent}
           sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}
         >
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h5" gutterBottom>
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+            <Typography variant="h5" gutterBottom sx={{ mb: 0 }}>
               Patients
             </Typography>
-            {canManagePatients && (
-            <Button
-              variant="contained"
-              onClick={handleStartCreate}
-            >
-              Add Patient
-            </Button>
-          )}
-        </Box>
+            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+              <ToggleButtonGroup
+                size="small"
+                value={showArchived ? 'archived' : 'active'}
+                exclusive
+                onChange={(event, value) => {
+                  if (value) {
+                    setShowArchived(value === 'archived');
+                  }
+                }}
+                aria-label="Patient status filter"
+              >
+                <ToggleButton value="active">Active</ToggleButton>
+                <ToggleButton value="archived">Archived</ToggleButton>
+              </ToggleButtonGroup>
+              {canManagePatients && (
+                <Button
+                  variant="contained"
+                  onClick={handleStartCreate}
+                >
+                  Add Patient
+                </Button>
+              )}
+            </Box>
+          </Box>
         <Divider />
         {userData?.role === 'therapist' && (
           <Box display="flex" justifyContent="flex-end" sx={{ mt: 2, mb: 1 }}>

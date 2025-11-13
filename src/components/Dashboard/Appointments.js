@@ -737,14 +737,24 @@ const Appointments = ({ userData }) => {
   const canManageAppointments = ['admin', 'receptionist'].includes(userData?.role);
   const canUpdateOutcome = ['admin', 'therapist'].includes(userData?.role);
 
+  const actionButtonSx = {
+    px: 2.5,
+    minWidth: 120,
+    borderRadius: 999,
+    textTransform: 'none',
+    whiteSpace: 'nowrap',
+    fontWeight: 600,
+  };
+
   const renderRowActions = (row) => (
     <Box
       sx={{
         display: 'flex',
-        justifyContent: isMobile ? 'stretch' : 'flex-end',
-        alignItems: 'stretch',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
         flexDirection: isMobile ? 'column' : 'row',
-        gap: 1,
+        gap: isMobile ? 1 : 1.5,
+        width: '100%',
       }}
     >
       {canManageAppointments && (
@@ -752,7 +762,7 @@ const Appointments = ({ userData }) => {
           size="small"
           variant="outlined"
           onClick={() => openEditDialog(row)}
-          sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
+          sx={{ ...actionButtonSx, color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
           fullWidth={isMobile}
         >
           Edit
@@ -761,9 +771,10 @@ const Appointments = ({ userData }) => {
       {canUpdateOutcome && (
         <Button
           size="small"
-          variant="outlined"
+          variant="contained"
+          color="secondary"
           onClick={() => openCompletionDialog(row)}
-          sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
+          sx={{ ...actionButtonSx }}
           fullWidth={isMobile}
         >
           Update outcome
@@ -773,9 +784,10 @@ const Appointments = ({ userData }) => {
         <Button
           size="small"
           color="warning"
+          variant="contained"
           onClick={() => handleCancelAppointment(row.appointment_id)}
           disabled={row.status === 'cancelled'}
-          sx={{ color: '#fff', whiteSpace: 'nowrap' }}
+          sx={{ ...actionButtonSx }}
           fullWidth={isMobile}
         >
           Cancel
@@ -830,7 +842,7 @@ const Appointments = ({ userData }) => {
       align: 'right',
       sortable: false,
       filterable: false,
-      minWidth: 120,
+      minWidth: isMobile ? 160 : 260,
       render: renderRowActions,
     });
   }
@@ -1142,7 +1154,8 @@ const Appointments = ({ userData }) => {
           display: 'flex',
           flexDirection: 'column',
           gap: isMobile ? 2 : 3,
-          p: { xs: 2, md: 3 },
+          py: { xs: 2, md: 3 },
+          px: { xs: 1.5, md: 2 },
         }}
       >
         <Box
@@ -1178,7 +1191,7 @@ const Appointments = ({ userData }) => {
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search by patient name or treatment"
         />
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <DataTable
             columns={appointmentColumns}
             rows={filteredAppointments}
