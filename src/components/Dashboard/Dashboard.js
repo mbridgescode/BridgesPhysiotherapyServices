@@ -36,7 +36,10 @@ const Main = styled('main', {
   shouldForwardProp: (prop) => prop !== 'drawerWidth' && prop !== 'isMobile',
 })(({ theme, drawerWidth, isMobile }) => ({
   flexGrow: 1,
-  padding: theme.spacing(isMobile ? 2 : 3),
+  paddingTop: theme.spacing(isMobile ? 1.5 : 2.5),
+  paddingBottom: theme.spacing(isMobile ? 1.5 : 2.5),
+  paddingLeft: theme.spacing(isMobile ? 1 : 0),
+  paddingRight: theme.spacing(isMobile ? 1 : 0),
   marginLeft: isMobile ? 0 : `${drawerWidth}px`,
   minHeight: '100vh',
   background: 'transparent',
@@ -47,9 +50,6 @@ const Main = styled('main', {
   boxSizing: 'border-box',
   overflow: 'hidden',
   transition: 'margin-left 0.2s ease',
-  [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(1.5),
-  },
 }));
 
 const Dashboard = () => {
