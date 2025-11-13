@@ -734,26 +734,6 @@ const PatientDetails = () => {
     [communications],
   );
 
-  if (loading) {
-    return <CircularProgress />;
-  }
-
-  if (error) {
-    return <Typography color="error">{error}</Typography>;
-  }
-
-  if (!patient) {
-    return <Typography>No patient data found.</Typography>;
-  }
-
-  const therapistLabel = patient.primaryTherapist?.username
-    ? `${patient.primaryTherapist.username}${
-      patient.primaryTherapist.employeeID ? ` (#${patient.primaryTherapist.employeeID})` : ''
-    }`
-    : patient.primary_therapist_id
-      ? `#${patient.primary_therapist_id}`
-      : null;
-
   const noteColumns = useMemo(() => {
     const columns = [
       {
@@ -799,6 +779,26 @@ const PatientDetails = () => {
 
     return columns;
   }, [canEditNotes, openDeleteNoteDialog, openEditNoteDialog]);
+
+  if (loading) {
+    return <CircularProgress />;
+  }
+
+  if (error) {
+    return <Typography color="error">{error}</Typography>;
+  }
+
+  if (!patient) {
+    return <Typography>No patient data found.</Typography>;
+  }
+
+  const therapistLabel = patient.primaryTherapist?.username
+    ? `${patient.primaryTherapist.username}${
+      patient.primaryTherapist.employeeID ? ` (#${patient.primaryTherapist.employeeID})` : ''
+    }`
+    : patient.primary_therapist_id
+      ? `#${patient.primary_therapist_id}`
+      : null;
 
   const treatmentColumns = [
     {
