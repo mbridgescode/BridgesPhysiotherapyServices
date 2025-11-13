@@ -21,6 +21,7 @@ import {
   BarChart as BarChartIcon,
   EventNote as AppointmentIcon,
   ReceiptLong as InvoiceIcon,
+  Payment as PaymentIcon,
   AdminPanelSettings as AdminIcon,
   Security as AuditIcon,
   ChevronLeft as ChevronLeftIcon,
@@ -101,6 +102,12 @@ const Sidebar = ({
       label: 'Invoices',
       icon: <InvoiceIcon />,
       path: '/dashboard/invoices',
+      roles: ['admin', 'receptionist'],
+    },
+    {
+      label: 'Payments',
+      icon: <PaymentIcon />,
+      path: '/dashboard/payments',
       roles: ['admin', 'receptionist'],
     },
     {

@@ -24,6 +24,7 @@ import Appointments from './Appointments';
 import Patients from './Patients';
 import PatientDetails from './PatientDetails';
 import Invoices from './Invoices';
+import Payments from './Payments';
 import AuditLog from './AuditLog';
 import Admin from './Admin';
 import { styled, useTheme } from '@mui/material/styles';
@@ -146,6 +147,7 @@ const Dashboard = () => {
             <Route path="patients" element={<Patients userData={userData} />} />
             <Route path="patients/:id" element={<PatientDetails />} />
             <Route path="invoices" element={<Invoices />} />
+            <Route path="payments" element={<Payments userData={userData} />} />
             <Route path="reports" element={<Reports />} />
             <Route path="profit-loss" element={<ProfitLoss />} />
             <Route path="settings" element={<Settings />} />
