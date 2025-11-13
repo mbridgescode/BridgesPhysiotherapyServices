@@ -38,6 +38,8 @@ const defaultForm = {
   administrator: false,
 };
 
+const MIN_PASSWORD_LENGTH = 8;
+
 const Admin = () => {
   const { userData } = useContext(UserContext);
   const [users, setUsers] = useState([]);
@@ -120,8 +122,18 @@ const Admin = () => {
 
   const handleCreateUser = async (event) => {
     event.preventDefault();
-    if (!formState.username || !formState.password) {
+    const trimmedUsername = formState.username?.trim();
+    const trimmedEmail = formState.email?.trim();
+    if (!trimmedUsername || !formState.password) {
       setError('Username and password are required.');
+      return;
+    }
+    if (!trimmedEmail) {
+      setError('Email is required.');
+      return;
+    }
+    if (formState.password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Temporary password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
       return;
     }
 
@@ -129,8 +141,8 @@ const Admin = () => {
     setError(null);
     try {
       await apiClient.post('/auth/register', {
-        username: formState.username,
-        email: formState.email,
+        username: trimmedUsername,
+        email: trimmedEmail,
         password: formState.password,
         role: formState.role,
         administrator: formState.administrator,
@@ -328,15 +340,19 @@ const Admin = () => {
                   value={formState.email}
                   onChange={handleFormChange('email')}
                   fullWidth
+                  required
                 />
               </Grid>
               <Grid item xs={12} md={3}>
                 <TextField
                   label="Temporary Password"
+                  type="password"
                   value={formState.password}
                   onChange={handleFormChange('password')}
                   fullWidth
                   required
+                  helperText={`Minimum ${MIN_PASSWORD_LENGTH} characters`}
+                  inputProps={{ minLength: MIN_PASSWORD_LENGTH }}
                 />
               </Grid>
               <Grid item xs={12} md={3}>

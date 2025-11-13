@@ -562,6 +562,22 @@ router.post('/register', authenticate, authorize('admin'), async (req, res, next
       return res.status(400).json({ success: false, message: 'username, email and password are required' });
     }
 
+    const normalizedUsername = username.trim().toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
+    const MIN_PASSWORD_LENGTH = 8;
+    if (!normalizedUsername) {
+      return res.status(400).json({ success: false, message: 'Username cannot be blank' });
+    }
+    if (!normalizedEmail) {
+      return res.status(400).json({ success: false, message: 'Email cannot be blank' });
+    }
+    if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters long`,
+      });
+    }
+
     const allowedRoles = ['admin', 'therapist', 'receptionist'];
     const normalizeRole = (value) => (allowedRoles.includes(value) ? value : 'therapist');
     let resolvedRole = normalizeRole(role);
@@ -573,8 +589,8 @@ router.post('/register', authenticate, authorize('admin'), async (req, res, next
     const employeeIdValue = await Counter.next('employee_id', 1);
 
     const user = await User.create({
-      username: username.toLowerCase(),
-      email: email.toLowerCase(),
+      username: normalizedUsername,
+      email: normalizedEmail,
       password,
       role: resolvedRole,
       employeeID: employeeIdValue,
@@ -597,6 +613,13 @@ router.post('/register', authenticate, authorize('admin'), async (req, res, next
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({ success: false, message: 'Username or email already in use' });
+    }
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors || {}).map((err) => err.message);
+      return res.status(400).json({
+        success: false,
+        message: messages[0] || 'Invalid user data',
+      });
     }
     return next(error);
   }
