@@ -17,6 +17,14 @@ const emailTemplateSchema = new mongoose.Schema({
   body: { type: String, required: true },
 }, { _id: false });
 
+const paymentInstructionsSchema = new mongoose.Schema({
+  text: { type: String, trim: true },
+  lines: {
+    type: [String],
+    default: undefined,
+  },
+}, { _id: false });
+
 const notificationPreferencesSchema = new mongoose.Schema({
   send_invoice_emails: { type: Boolean, default: true },
   send_payment_reminders: { type: Boolean, default: true },
@@ -36,6 +44,7 @@ const clinicSettingsSchema = new mongoose.Schema({
     type: [emailTemplateSchema],
     default: [],
   },
+  payment_instructions: paymentInstructionsSchema,
   notification_preferences: notificationPreferencesSchema,
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,

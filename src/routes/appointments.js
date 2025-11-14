@@ -153,6 +153,10 @@ const AUTO_INVOICE_RULES = {
     multiplier: 1,
     description: (appointment) => appointment.treatment_description || 'Treatment session',
   },
+  completed_manual: {
+    multiplier: 1,
+    description: (appointment) => appointment.treatment_description || 'Treatment session',
+  },
   cancelled_same_day: {
     multiplier: 0.5,
     description: (appointment) => `${appointment.treatment_description || 'Treatment session'} (same-day cancellation fee)`,
@@ -229,7 +233,7 @@ const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }
     balance_due: totals.balanceDue,
     currency: 'GBP',
     issue_date: new Date(),
-    status: 'sent',
+    status: 'draft',
     createdBy: actorId,
     email_log: { status: 'queued' },
   });
@@ -265,8 +269,9 @@ const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }
     appointment,
     patient,
   });
+  let emailResult;
   try {
-    const emailResult = await sendTransactionalEmail({
+    emailResult = await sendTransactionalEmail({
       to: billingContact.email,
       subject: emailContent.subject,
       html: emailContent.html,
@@ -283,6 +288,7 @@ const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }
       metadata: { invoice_number: invoice.invoice_number },
     });
 
+    const delivered = !emailResult.simulated && emailResult.status === 'sent';
     invoice.email_log = {
       status: emailResult.status,
       provider: emailResult.provider || 'unknown',
@@ -290,6 +296,12 @@ const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }
       lastAttemptAt: new Date(),
       errorMessage: emailResult.errorMessage,
     };
+    if (delivered) {
+      invoice.status = 'sent';
+      invoice.sent_at = new Date();
+    } else if (emailResult.status === 'failed') {
+      invoice.status = 'draft';
+    }
   } catch (emailError) {
     console.error('Failed to email automatic invoice', emailError);
     invoice.email_log = {
@@ -299,6 +311,7 @@ const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }
       lastAttemptAt: new Date(),
       errorMessage: emailError.message,
     };
+    invoice.status = 'draft';
   }
 
   await invoice.save();
@@ -741,7 +754,9 @@ router.post(
       let autoInvoiceResult = null;
       const shouldAutoInvoice = patient
         && patient.billing_mode !== 'monthly'
-        && (effectiveOutcome === 'completed' || effectiveOutcome === 'cancelled_same_day');
+        && (effectiveOutcome === 'completed'
+          || effectiveOutcome === 'completed_manual'
+          || effectiveOutcome === 'cancelled_same_day');
 
       if (shouldAutoInvoice) {
         try {

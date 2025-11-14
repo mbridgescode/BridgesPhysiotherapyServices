@@ -35,6 +35,34 @@ const findInvoiceByReference = async ({ invoiceNumber, invoiceId }) => {
   return Invoice.findOne({ $or: query });
 };
 
+const appointmentBelongsToInvoice = (invoice, appointmentId) => {
+  if (appointmentId === undefined || appointmentId === null) {
+    return true;
+  }
+  if (invoice.appointment_id !== undefined && invoice.appointment_id !== null) {
+    if (Number(invoice.appointment_id) === Number(appointmentId)) {
+      return true;
+    }
+  }
+  if (Array.isArray(invoice.appointment_ids)) {
+    return invoice.appointment_ids.some((id) => Number(id) === Number(appointmentId));
+  }
+  return false;
+};
+
+const resolveAppointmentIdForInvoice = (invoice, explicitAppointmentId) => {
+  if (explicitAppointmentId !== undefined && explicitAppointmentId !== null) {
+    return explicitAppointmentId;
+  }
+  if (invoice.appointment_id !== undefined && invoice.appointment_id !== null) {
+    return invoice.appointment_id;
+  }
+  if (Array.isArray(invoice.appointment_ids) && invoice.appointment_ids.length > 0) {
+    return invoice.appointment_ids[0];
+  }
+  return undefined;
+};
+
 const buildInvoiceSummary = (invoiceDoc) => {
   if (!invoiceDoc) {
     return null;
@@ -134,7 +162,6 @@ router.post(
       const {
         invoice_number: invoiceNumber,
         invoice_id: invoiceId,
-        patient_id: patientId,
         appointment_id: appointmentId,
         amount_paid: amountPaid,
         method,
@@ -156,6 +183,14 @@ router.post(
         return res.status(404).json({ success: false, message: 'Invoice not found' });
       }
 
+      const normalizedAppointmentId = appointmentId !== undefined ? sanitizeNumber(appointmentId) : undefined;
+      if (!appointmentBelongsToInvoice(invoice, normalizedAppointmentId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'appointment_id must reference the selected invoice',
+        });
+      }
+
       const normalizedAmount = Number(amountPaid);
       if (Number.isNaN(normalizedAmount) || normalizedAmount <= 0) {
         return res.status(400).json({ success: false, message: 'amount_paid must be greater than zero' });
@@ -172,8 +207,8 @@ router.post(
         payment_id: paymentId,
         invoice_id: invoice.invoice_id,
         invoice_number: invoice.invoice_number,
-        patient_id: patientId || invoice.patient_id,
-        appointment_id: appointmentId || invoice.appointment_id,
+        patient_id: invoice.patient_id,
+        appointment_id: resolveAppointmentIdForInvoice(invoice, normalizedAppointmentId),
         amount_paid: normalizedAmount,
         method,
         payment_date: paymentDateValue,
@@ -229,7 +264,6 @@ router.put(
       const {
         invoice_number: invoiceNumber,
         invoice_id: invoiceId,
-        patient_id: patientId,
         appointment_id: appointmentId,
         amount_paid: amountPaid,
         method,
@@ -283,16 +317,20 @@ router.put(
         payment.notes = notes;
       }
 
-      if (patientId !== undefined) {
-        const normalizedPatientId = sanitizeNumber(patientId);
-        payment.patient_id = normalizedPatientId ?? payment.patient_id;
-      } else if (!payment.patient_id) {
-        payment.patient_id = invoice.patient_id;
+      const normalizedAppointmentId = appointmentId !== undefined ? sanitizeNumber(appointmentId) : undefined;
+      if (!appointmentBelongsToInvoice(invoice, normalizedAppointmentId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'appointment_id must reference the selected invoice',
+        });
       }
 
-      if (appointmentId !== undefined) {
-        payment.appointment_id = sanitizeNumber(appointmentId);
-      }
+      payment.patient_id = invoice.patient_id;
+      const resolvedAppointmentId = resolveAppointmentIdForInvoice(
+        invoice,
+        normalizedAppointmentId ?? payment.appointment_id,
+      );
+      payment.appointment_id = resolvedAppointmentId;
 
       await payment.save();
 

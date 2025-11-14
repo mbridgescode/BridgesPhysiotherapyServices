@@ -87,6 +87,15 @@ const buildInvoiceLabel = (invoice) => {
   return parts.join(' • ');
 };
 
+const resolveInvoiceBalance = (invoice) => {
+  if (!invoice) {
+    return 0;
+  }
+  const balance = invoice.balance_due ?? invoice.totals?.balance ?? invoice.total_due ?? 0;
+  const parsed = Number(balance);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
 const resolveInvoiceForPayment = (payment, invoiceOptions) => {
   if (!payment) {
     return null;
@@ -156,7 +165,9 @@ const Payments = ({ userData }) => {
     setInvoicesLoading(true);
     try {
       const response = await apiClient.get('/api/invoices', { params: { include: 'payments' } });
-      setInvoiceOptions(response.data?.invoices || []);
+      const invoices = response.data?.invoices || [];
+      const outstanding = invoices.filter((invoice) => resolveInvoiceBalance(invoice) > 0);
+      setInvoiceOptions(outstanding);
       setInvoiceError('');
     } catch (err) {
       console.error('Failed to load invoices', err);
@@ -218,6 +229,19 @@ const Payments = ({ userData }) => {
         return haystack.some((entry) => entry.includes(query));
       });
   }, [payments, searchTerm, methodFilter]);
+
+  const invoiceAutocompleteOptions = useMemo(() => {
+    if (dialogMode === 'edit' && selectedInvoice) {
+      const exists = invoiceOptions.some(
+        (invoice) => invoice.invoice_id === selectedInvoice.invoice_id
+          || invoice.invoice_number === selectedInvoice.invoice_number,
+      );
+      if (!exists) {
+        return [selectedInvoice, ...invoiceOptions];
+      }
+    }
+    return invoiceOptions;
+  }, [dialogMode, selectedInvoice, invoiceOptions]);
 
   const resetForm = useCallback(() => {
     setFormState(defaultFormState());
@@ -510,9 +534,7 @@ const Payments = ({ userData }) => {
     return <Typography variant="h6">{error}</Typography>;
   }
 
-  const selectedInvoiceBalance = selectedInvoice
-    ? selectedInvoice.balance_due ?? selectedInvoice.totals?.balance ?? selectedInvoice.total_due
-    : null;
+  const selectedInvoiceBalance = selectedInvoice ? resolveInvoiceBalance(selectedInvoice) : null;
 
   return (
     <Box
@@ -589,7 +611,7 @@ const Payments = ({ userData }) => {
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <Autocomplete
-                options={invoiceOptions}
+                options={invoiceAutocompleteOptions}
                 loading={invoicesLoading}
                 value={selectedInvoice}
                 onChange={(event, newValue) => {
