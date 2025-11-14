@@ -84,11 +84,12 @@ const COMPLETION_OUTCOME_OPTIONS = [
 
 const DEFAULT_VISIBLE_STATUS = 'scheduled';
 
-const getTherapistInfo = (appointment) => {
+const getTherapistInfo = (appointment, lookup = {}) => {
   if (!appointment) {
     return { name: '', employeeId: null };
   }
   const therapistRecord = typeof appointment.therapist === 'object' ? appointment.therapist : {};
+  const therapistIdCandidate = therapistRecord?._id || therapistRecord?.id || appointment.therapist || appointment.therapistId;
   const name = (
     appointment.therapistName
     || appointment.therapist_name
@@ -96,8 +97,39 @@ const getTherapistInfo = (appointment) => {
     || therapistRecord?.username
     || appointment.therapistUsername
   ) || '';
+    || appointment.therapistUsername
+  ) || '';
   const employeeId = appointment.employeeID ?? therapistRecord?.employeeID ?? null;
-  return { name, employeeId };
+
+  let resolvedName = name;
+  let resolvedEmployeeId = employeeId;
+
+  const normalizedTherapistId = therapistIdCandidate ? String(therapistIdCandidate) : null;
+  if (lookup.byId && normalizedTherapistId && lookup.byId.has(normalizedTherapistId)) {
+    const match = lookup.byId.get(normalizedTherapistId);
+    resolvedName = resolvedName || match.name;
+    if (resolvedEmployeeId === null || resolvedEmployeeId === undefined) {
+      resolvedEmployeeId = match.employeeID ?? resolvedEmployeeId;
+    }
+  }
+
+  if (
+    lookup.byEmployeeId
+    && (resolvedName === '' || resolvedName === 'Unassigned')
+    && appointment.employeeID !== undefined
+    && appointment.employeeID !== null
+  ) {
+    const employeeKey = Number(appointment.employeeID);
+    const match = Number.isNaN(employeeKey) ? null : lookup.byEmployeeId.get(employeeKey);
+    if (match) {
+      resolvedName = match.name;
+      if (resolvedEmployeeId === null || resolvedEmployeeId === undefined) {
+        resolvedEmployeeId = match.employeeID ?? resolvedEmployeeId;
+      }
+    }
+  }
+
+  return { name: resolvedName, employeeId: resolvedEmployeeId };
 };
 
 const buildTreatmentNotePreview = (note, limit = 120) => {
@@ -270,6 +302,31 @@ const Appointments = ({ userData }) => {
     }
     return [];
   }, [therapists, userData]);
+
+  const therapistLookupById = useMemo(() => {
+    const map = new Map();
+    therapistOptions.forEach((therapist) => {
+      if (!therapist.id) {
+        return;
+      }
+      map.set(String(therapist.id), therapist);
+    });
+    return map;
+  }, [therapistOptions]);
+
+  const therapistLookupByEmployeeId = useMemo(() => {
+    const map = new Map();
+    therapistOptions.forEach((therapist) => {
+      if (therapist.employeeID === null || therapist.employeeID === undefined) {
+        return;
+      }
+      const numericEmployeeId = Number(therapist.employeeID);
+      if (!Number.isNaN(numericEmployeeId)) {
+        map.set(numericEmployeeId, therapist);
+      }
+    });
+    return map;
+  }, [therapistOptions]);
 
   useEffect(() => {
     if (!therapistOptions.length) {
@@ -810,9 +867,15 @@ const Appointments = ({ userData }) => {
       id: 'therapist',
       label: 'Therapist',
       minWidth: 180,
-      valueGetter: (row) => getTherapistInfo(row).name,
+      valueGetter: (row) => getTherapistInfo(row, {
+        byId: therapistLookupById,
+        byEmployeeId: therapistLookupByEmployeeId,
+      }).name,
       render: (row) => {
-        const therapist = getTherapistInfo(row);
+        const therapist = getTherapistInfo(row, {
+          byId: therapistLookupById,
+          byEmployeeId: therapistLookupByEmployeeId,
+        });
         if (!therapist.name && !therapist.employeeId) {
           return (
             <Typography variant="body2" color="text.secondary">
@@ -986,9 +1049,12 @@ const Appointments = ({ userData }) => {
     </Box>
   );
 
-    const renderAppointmentCard = (row) => {
+  const renderAppointmentCard = (row) => {
     const eventDate = row.date ? new Date(row.date) : null;
-    const therapist = getTherapistInfo(row);
+    const therapist = getTherapistInfo(row, {
+      byId: therapistLookupById,
+      byEmployeeId: therapistLookupByEmployeeId,
+    });
     return (
       <Card variant="outlined" sx={{ backgroundColor: 'rgba(15,23,42,0.6)' }}>
         <CardActionArea onClick={() => openTreatmentNoteDialog(row)} sx={{ textAlign: 'left' }}>
@@ -1953,7 +2019,10 @@ if (canManageAppointments || canUpdateOutcome) {
                   ? new Date(noteDialog.appointment.date).toLocaleString()
                   : 'Date TBC'}
                 {' · '}
-                {getTherapistInfo(noteDialog.appointment).name || 'Unassigned therapist'}
+                {getTherapistInfo(noteDialog.appointment, {
+                  byId: therapistLookupById,
+                  byEmployeeId: therapistLookupByEmployeeId,
+                }).name || 'Unassigned therapist'}
               </Typography>
             </Box>
           )}
