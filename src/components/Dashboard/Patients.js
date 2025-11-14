@@ -298,7 +298,7 @@ const Patients = ({ userData }) => {
             patient.primary_contact_email,
             patient.primary_contact_phone,
             patient.status,
-            patient.primaryTherapist?.username,
+            patient.primaryTherapist?.name || patient.primaryTherapist?.username,
             formatPatientAddress(patient.address),
           ].some((field) => field?.toLowerCase().includes(searchValue));
 
@@ -381,11 +381,10 @@ const Patients = ({ userData }) => {
   }, []);
 
   const formatPrimaryTherapist = useCallback((row) => {
-    if (row.primaryTherapist?.username) {
+    if (row.primaryTherapist?.name || row.primaryTherapist?.username) {
       const suffix = row.primaryTherapist.employeeID ? ` (#${row.primaryTherapist.employeeID})` : '';
-      return `${row.primaryTherapist.username}${suffix}`;
+      return `${row.primaryTherapist.name || row.primaryTherapist.username}${suffix}`;
     }
-
     if (row.primary_therapist_id !== undefined && row.primary_therapist_id !== null) {
       const therapistName =
         therapistNameByEmployeeOrId.get(Number(row.primary_therapist_id))
@@ -395,11 +394,6 @@ const Patients = ({ userData }) => {
       }
       return `#${row.primary_therapist_id}`;
     }
-
-    if (row.primaryTherapist?.name) {
-      return row.primaryTherapist.name;
-    }
-
     return 'Unassigned';
   }, [therapistNameByEmployeeOrId]);
 

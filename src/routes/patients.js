@@ -168,7 +168,7 @@ router.get(
       const patientDocs = await Patient.find(query)
         .limit(Number(limit))
         .sort({ updatedAt: -1 })
-        .populate('primaryTherapist', 'username email role employeeID');
+        .populate('primaryTherapist', 'name username email role employeeID');
 
       const patients = patientDocs.map(toPlainObject);
 
@@ -535,7 +535,7 @@ router.get(
       }
 
       const patientDoc = await Patient.findOne({ patient_id: patientId })
-        .populate('primaryTherapist', 'username email role employeeID');
+        .populate('primaryTherapist', 'name username email role employeeID');
 
       if (!patientDoc) {
         return res.status(404).json({ success: false, message: 'Patient not found' });
@@ -602,7 +602,7 @@ router.get(
       }
 
       const patientDoc = await Patient.findOne({ patient_id: patientId })
-        .populate('primaryTherapist', 'username email role employeeID');
+        .populate('primaryTherapist', 'name username email role employeeID');
       if (!patientDoc) {
         return res.status(404).json({ success: false, message: 'Patient not found' });
       }

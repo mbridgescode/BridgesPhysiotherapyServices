@@ -92,6 +92,7 @@ const parseTtl = (ttl) => {
 
 const sanitizeUser = (user) => ({
   id: user.id,
+  name: user.name,
   username: user.username,
   email: user.email,
   role: user.role,
@@ -357,7 +358,7 @@ router.post('/2fa/setup', authenticate, async (req, res, next) => {
 
     const secret = speakeasy.generateSecret({
       length: 32,
-      name: `Bridges Physiotherapy (${user.username})`,
+      name: `Bridges Physiotherapy (${user.name || user.username})`,
     });
 
     user.twoFactorTempSecret = secret.base32;
@@ -487,7 +488,7 @@ router.post('/forgot-password', async (req, res) => {
     await sendTransactionalEmail({
       to: normalizedEmail,
       subject: 'Reset your Bridges Physiotherapy password',
-      html: `<p>Hello ${user.username},</p>
+      html: `<p>Hello ${user.name || user.username},</p>
         <p>We received a request to reset your password. Click the button below to continue.</p>
         <p><a href="${resetLink}">Reset my password</a></p>
         <p>If you did not request this change you can ignore this email.</p>`,
@@ -551,6 +552,7 @@ router.post('/reset-password', async (req, res) => {
 router.post('/register', authenticate, authorize('admin'), async (req, res, next) => {
   try {
     const {
+      name,
       username,
       email,
       password,
@@ -558,13 +560,17 @@ router.post('/register', authenticate, authorize('admin'), async (req, res, next
       administrator = false,
     } = req.body;
 
-    if (!username || !password || !email) {
-      return res.status(400).json({ success: false, message: 'username, email and password are required' });
+    if (!name || !username || !password || !email) {
+      return res.status(400).json({ success: false, message: 'name, username, email and password are required' });
     }
 
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
     const normalizedUsername = username.trim().toLowerCase();
     const normalizedEmail = email.trim().toLowerCase();
     const MIN_PASSWORD_LENGTH = 8;
+    if (!trimmedName) {
+      return res.status(400).json({ success: false, message: 'Name cannot be blank' });
+    }
     if (!normalizedUsername) {
       return res.status(400).json({ success: false, message: 'Username cannot be blank' });
     }
@@ -589,6 +595,7 @@ router.post('/register', authenticate, authorize('admin'), async (req, res, next
     const employeeIdValue = await Counter.next('employee_id', 1);
 
     const user = await User.create({
+      name: trimmedName,
       username: normalizedUsername,
       email: normalizedEmail,
       password,

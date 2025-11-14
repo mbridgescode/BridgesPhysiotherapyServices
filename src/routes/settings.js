@@ -408,7 +408,7 @@ router.get(
       }
 
       const availability = await TherapistAvailability.find(query)
-        .populate('therapist', 'username email role employeeID')
+        .populate('therapist', 'name username email role employeeID')
         .sort({ effective_from: -1 });
 
       res.json({ success: true, availability });

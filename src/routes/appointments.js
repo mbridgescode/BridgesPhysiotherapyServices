@@ -453,7 +453,7 @@ router.post(
 
       let therapistRecord = null;
       if (therapistId) {
-        therapistRecord = await User.findById(therapistId).select('employeeID username email');
+        therapistRecord = await User.findById(therapistId).select('name employeeID username email');
         if (!therapistRecord) {
           return res.status(400).json({ success: false, message: 'Selected therapist not found' });
         }
@@ -588,7 +588,10 @@ router.post(
             const plain = typeof doc.toObject === 'function' ? doc.toObject() : doc;
             return {
               ...plain,
-              therapist_name: therapistRecord?.username || therapistRecord?.email || `Therapist #${resolvedEmployeeId}`,
+              therapist_name: therapistRecord?.name
+                || therapistRecord?.username
+                || therapistRecord?.email
+                || `Therapist #${resolvedEmployeeId}`,
             };
           });
           const emailContent = buildBookingConfirmationEmail({

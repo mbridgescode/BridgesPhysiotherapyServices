@@ -792,8 +792,8 @@ const PatientDetails = () => {
     return <Typography>No patient data found.</Typography>;
   }
 
-  const therapistLabel = patient.primaryTherapist?.username
-    ? `${patient.primaryTherapist.username}${
+  const therapistLabel = (patient.primaryTherapist?.name || patient.primaryTherapist?.username)
+    ? `${patient.primaryTherapist.name || patient.primaryTherapist.username}${
       patient.primaryTherapist.employeeID ? ` (#${patient.primaryTherapist.employeeID})` : ''
     }`
     : patient.primary_therapist_id

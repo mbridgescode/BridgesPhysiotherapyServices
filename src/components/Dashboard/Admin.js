@@ -36,6 +36,7 @@ const roles = [
 ];
 
 const defaultForm = {
+  name: '',
   username: '',
   email: '',
   password: '',
@@ -44,6 +45,7 @@ const defaultForm = {
 };
 
 const createEmptyEditValues = () => ({
+  name: '',
   username: '',
   email: '',
   role: 'therapist',
@@ -145,8 +147,13 @@ const Admin = () => {
 
   const handleCreateUser = async (event) => {
     event.preventDefault();
+    const trimmedName = formState.name?.trim();
     const trimmedUsername = formState.username?.trim();
     const trimmedEmail = formState.email?.trim();
+    if (!trimmedName) {
+      setError('Name is required.');
+      return;
+    }
     if (!trimmedUsername || !formState.password) {
       setError('Username and password are required.');
       return;
@@ -164,6 +171,7 @@ const Admin = () => {
     setError(null);
     try {
       await apiClient.post('/auth/register', {
+        name: trimmedName,
         username: trimmedUsername,
         email: trimmedEmail,
         password: formState.password,
@@ -206,12 +214,12 @@ const Admin = () => {
     handleUserUpdate(userId, { active: !current });
   };
 
-  const handleDeleteUser = async (userId, username) => {
+  const handleDeleteUser = async (userId, displayName) => {
     if (userId === userData?.id) {
       setError('You cannot delete your own account.');
       return;
     }
-    const confirmed = window.confirm(`Delete user "${username}"? This cannot be undone.`);
+    const confirmed = window.confirm(`Delete user "${displayName}"? This cannot be undone.`);
     if (!confirmed) {
       return;
     }
@@ -241,6 +249,7 @@ const Admin = () => {
       open: true,
       userId: user.id,
       values: {
+        name: user.name || '',
         username: user.username || '',
         email: user.email || '',
         role: user.role || 'therapist',
@@ -315,7 +324,12 @@ const Admin = () => {
     if (!editDialog.userId) {
       return;
     }
+    const trimmedName = editDialog.values.name?.trim() || '';
     const trimmedUsername = editDialog.values.username.trim();
+    if (!trimmedName) {
+      setEditDialog((prev) => ({ ...prev, error: 'Name is required.' }));
+      return;
+    }
     if (!trimmedUsername) {
       setEditDialog((prev) => ({ ...prev, error: 'Username is required.' }));
       return;
@@ -334,6 +348,7 @@ const Admin = () => {
     }
 
     const payload = {
+      name: trimmedName,
       username: trimmedUsername,
       email: trimmedEmail,
       employeeID: normalizedEmployeeId,
@@ -355,8 +370,14 @@ const Admin = () => {
 
   const userColumns = [
     {
-      id: 'username',
+      id: 'name',
       label: 'Name',
+      minWidth: 180,
+      render: (row) => row.name || '—',
+    },
+    {
+      id: 'username',
+      label: 'Username',
       minWidth: 160,
     },
     {
@@ -455,7 +476,7 @@ const Admin = () => {
                   || savingUserId === row.id
                   || row.id === userData?.id
                 }
-                onClick={() => handleDeleteUser(row.id, row.username)}
+                onClick={() => handleDeleteUser(row.id, row.name || row.username)}
               >
                 <DeleteIcon fontSize="inherit" />
               </IconButton>
@@ -488,6 +509,18 @@ const Admin = () => {
           >
             <Typography variant="h5">Invite User</Typography>
             <Grid container spacing={2}>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  label="Name"
+                  name="inviteName"
+                  value={formState.name}
+                  onChange={handleFormChange('name')}
+                  fullWidth
+                  required
+                  autoComplete="off"
+                  inputProps={{ autoComplete: 'off' }}
+                />
+              </Grid>
               <Grid item xs={12} md={3}>
                 <TextField
                   label="Username"
@@ -614,6 +647,15 @@ const Admin = () => {
         <DialogTitle>Edit User</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Name"
+                value={editDialog.values.name}
+                onChange={handleEditInputChange('name')}
+                fullWidth
+                required
+              />
+            </Grid>
             <Grid item xs={12} md={6}>
               <TextField
                 label="Username"

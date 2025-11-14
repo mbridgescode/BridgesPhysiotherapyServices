@@ -7,6 +7,7 @@ const router = express.Router();
 
 const formatUser = (user) => ({
   id: user.id,
+  name: user.name || '',
   username: user.username,
   email: user.email,
   role: user.role,
@@ -92,14 +93,14 @@ router.get(
     try {
       const therapists = await User.find(
         { role: { $in: ['therapist', 'admin'] }, active: true },
-        'username employeeID role administrator',
+        'name username employeeID role administrator',
       ).sort({ username: 1 });
 
       res.json({
         success: true,
         therapists: therapists.map((user) => ({
           id: user.id,
-          name: user.username,
+          name: user.name || user.username,
           employeeID: typeof user.employeeID === 'number' ? user.employeeID : null,
           role: user.role,
         })),
@@ -123,6 +124,11 @@ router.patch(
 
       if (req.body.role !== undefined && !ALLOWED_ROLES.includes(req.body.role)) {
         return res.status(400).json({ success: false, message: 'Invalid role provided' });
+      }
+
+      if (req.body.name !== undefined) {
+        const trimmedName = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+        user.name = trimmedName || undefined;
       }
 
       if (req.body.username !== undefined) {

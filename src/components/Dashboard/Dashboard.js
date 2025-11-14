@@ -136,7 +136,9 @@ const Dashboard = () => {
                 <MenuIcon />
               </IconButton>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {userData?.username ? `Hi, ${userData.username}` : 'Dashboard'}
+                {userData?.name || userData?.username
+                  ? `Hi, ${userData.name || userData.username}`
+                  : 'Dashboard'}
               </Typography>
               <Box sx={{ width: 40 }} />
             </Box>

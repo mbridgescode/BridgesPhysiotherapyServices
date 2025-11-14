@@ -3,6 +3,10 @@ const bcrypt = require('bcryptjs');
 const { encryptedStringField } = require('../utils/fieldEncryption');
 
 const userSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    trim: true,
+  },
   username: {
     type: String,
     required: true,

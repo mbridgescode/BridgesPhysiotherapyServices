@@ -63,7 +63,7 @@ const Home = ({ userData }) => {
     if (!isAdminOrReception) {
       const fallback = {
         value: userData?.id || 'me',
-        label: `${userData?.username || 'My agenda'}`,
+        label: `${userData?.name || userData?.username || 'My agenda'}`,
         employeeID: userData?.employeeID ?? null,
       };
       setProviders([fallback]);
@@ -105,7 +105,7 @@ const Home = ({ userData }) => {
     } finally {
       setProvidersLoading(false);
     }
-  }, [isAdminOrReception, userData?.employeeID, userData?.id, userData?.username]);
+  }, [isAdminOrReception, userData?.employeeID, userData?.id, userData?.name, userData?.username]);
 
   useEffect(() => {
     fetchProviders();

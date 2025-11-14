@@ -92,7 +92,9 @@ const DashboardHome = () => {
             <CircularProgress />
           ) : (
             <>
-              <Typography variant="h1">Welcome, {userData.username}</Typography>
+              <Typography variant="h1">
+                Welcome, {userData.name || userData.username}
+              </Typography>
               <Typography variant="body1">Email: {userData.email}</Typography>
               <Typography variant="body1">Administrator: {userData.administrator ? 'Yes' : 'No'}</Typography>
               <Typography variant="body1">Active: {userData.active ? 'Yes' : 'No'}</Typography>

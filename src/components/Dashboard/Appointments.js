@@ -214,7 +214,7 @@ const Appointments = ({ userData }) => {
     if (userData) {
       return [{
         id: userData.id || 'current-user',
-        name: userData.username,
+        name: userData.name || userData.username || 'Current user',
         employeeID: userData.employeeID ?? null,
         role: userData.role,
       }];
