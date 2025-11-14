@@ -159,6 +159,8 @@ const Home = ({ userData }) => {
         setMetrics(response.data.metrics);
       } catch (error) {
         console.error('Error fetching dashboard metrics', error);
+      } finally {
+        setLoadingMetrics(false);
       }
     };
     fetchMetrics();
