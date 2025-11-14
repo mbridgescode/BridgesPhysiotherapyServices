@@ -103,6 +103,11 @@ const Settings = () => {
   const [importingData, setImportingData] = useState(false);
   const [importError, setImportError] = useState('');
   const [importSummary, setImportSummary] = useState(null);
+  const [testEmailTypes, setTestEmailTypes] = useState([]);
+  const [testEmailTypesLoading, setTestEmailTypesLoading] = useState(false);
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [testEmailSending, setTestEmailSending] = useState({});
+  const [testEmailAlert, setTestEmailAlert] = useState(null);
   const fileInputRef = useRef(null);
 
   const isAdmin = userData?.role === 'admin';
@@ -135,6 +140,26 @@ const Settings = () => {
     loadSettings();
   }, []);
 
+  const loadTestEmailTypes = useCallback(async () => {
+    if (!isAdmin) {
+      return;
+    }
+    setTestEmailTypesLoading(true);
+    try {
+      const response = await apiClient.get('/api/settings/test-emails');
+      setTestEmailTypes(response.data.types || []);
+    } catch (err) {
+      console.error('Failed to load test email catalogue', err);
+      setTestEmailTypes([]);
+      setTestEmailAlert({
+        severity: 'error',
+        message: err?.response?.data?.message || 'Unable to load test email catalogue.',
+      });
+    } finally {
+      setTestEmailTypesLoading(false);
+    }
+  }, [isAdmin]);
+
   const loadDataRequests = useCallback(async () => {
     setRequestsLoading(true);
     try {
@@ -155,6 +180,13 @@ const Settings = () => {
       enabled: Boolean(userData?.twoFactorEnabled),
     }));
   }, [userData?.twoFactorEnabled]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+    loadTestEmailTypes();
+  }, [isAdmin, loadTestEmailTypes]);
 
   const openNewTemplateDialog = () => {
     setTemplateDialog({
@@ -877,7 +909,55 @@ const Settings = () => {
     },
   ];
 
-const handleSave = async () => {
+  const getTestEmailLabel = useCallback((typeId) => {
+    const entry = testEmailTypes.find((option) => option.id === typeId);
+    return entry?.label || 'Test email';
+  }, [testEmailTypes]);
+
+  const handleSendTestEmail = async (typeId) => {
+    const trimmedRecipient = testEmailRecipient.trim();
+    if (!trimmedRecipient) {
+      setTestEmailAlert({
+        severity: 'error',
+        message: 'Enter an email address before sending a test message.',
+      });
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedRecipient)) {
+      setTestEmailAlert({
+        severity: 'error',
+        message: 'Enter a valid email address.',
+      });
+      return;
+    }
+    setTestEmailAlert(null);
+    setTestEmailSending((prev) => ({ ...prev, [typeId]: true }));
+    try {
+      const response = await apiClient.post('/api/settings/test-emails', {
+        type: typeId,
+        recipient: trimmedRecipient,
+      });
+      const status = response.data?.result?.status || 'queued';
+      const label = getTestEmailLabel(typeId);
+      setTestEmailAlert({
+        severity: 'success',
+        message: `${label} email ${status === 'sent' ? 'sent' : 'queued'} (${status}).`,
+      });
+    } catch (err) {
+      const label = getTestEmailLabel(typeId);
+      const message = err?.response?.data?.message
+        || `Unable to send ${label.toLowerCase()} email.`;
+      setTestEmailAlert({
+        severity: 'error',
+        message,
+      });
+    } finally {
+      setTestEmailSending((prev) => ({ ...prev, [typeId]: false }));
+    }
+  };
+
+  const handleSave = async () => {
     if (!isAdmin) {
       return;
     }
@@ -1004,6 +1084,7 @@ const handleSave = async () => {
 
   const branding = settings?.branding || {};
   const notifications = settings?.notification_preferences || {};
+  const trimmedTestEmailRecipient = testEmailRecipient.trim();
 
   return (
     <Box display="flex" flexDirection="column" gap={3}>
@@ -1125,6 +1206,83 @@ const handleSave = async () => {
           </Box>
       </CardContent>
     </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h5" gutterBottom>
+            Test Emails
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Send sample patient communications to preview how each template looks with your current branding.
+          </Typography>
+          <Box
+            mt={2}
+            display="flex"
+            flexDirection={{ xs: 'column', md: 'row' }}
+            gap={2}
+          >
+            <TextField
+              label="Send test emails to"
+              type="email"
+              value={testEmailRecipient}
+              onChange={(event) => setTestEmailRecipient(event.target.value)}
+              fullWidth
+              placeholder="you@example.com"
+            />
+            <Box flex={1}>
+              <Typography variant="body2" color="text.secondary">
+                We use anonymised demonstration data and your latest clinic settings. No patient records are touched.
+              </Typography>
+            </Box>
+          </Box>
+          {testEmailAlert && (
+            <Alert severity={testEmailAlert.severity} sx={{ mt: 2 }}>
+              {testEmailAlert.message}
+            </Alert>
+          )}
+          {testEmailTypesLoading ? (
+            <Box display="flex" justifyContent="center" mt={3}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : testEmailTypes.length ? (
+            <Box mt={3} display="flex" flexDirection="column" gap={2}>
+              {testEmailTypes.map((type) => (
+                <Box
+                  key={type.id}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 2,
+                    p: 2,
+                    display: 'flex',
+                    flexDirection: { xs: 'column', md: 'row' },
+                    alignItems: { xs: 'flex-start', md: 'center' },
+                    gap: 2,
+                  }}
+                >
+                  <Box flex={1}>
+                    <Typography variant="subtitle1">{type.label}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {type.description}
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    onClick={() => handleSendTestEmail(type.id)}
+                    disabled={!trimmedTestEmailRecipient || Boolean(testEmailSending[type.id])}
+                  >
+                    {testEmailSending[type.id] ? 'Sending...' : 'Send test'}
+                  </Button>
+                </Box>
+              ))}
+            </Box>
+          ) : (
+            <Alert severity="info" sx={{ mt: 3 }}>
+              No patient email templates are available to test yet.
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent>
