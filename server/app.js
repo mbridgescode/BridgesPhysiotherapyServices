@@ -17,6 +17,8 @@ const servicesRouter = require('../src/routes/services');
 const dataRequestsRouter = require('../src/routes/dataRequests');
 const profitLossRouter = require('../src/routes/profitLoss');
 const treatmentNoteTemplatesRouter = require('../src/routes/treatmentNoteTemplates');
+const gpLetterTemplatesRouter = require('../src/routes/gpLetterTemplates');
+const communicationsRouter = require('../src/routes/communications');
 const importsRouter = require('../src/routes/imports');
 const {
   host,
@@ -98,6 +100,8 @@ app.use('/api/services', servicesRouter);
 app.use('/api/data-requests', dataRequestsRouter);
 app.use('/api/profit-loss', profitLossRouter);
 app.use('/api/treatment-note-templates', treatmentNoteTemplatesRouter);
+app.use('/api/gp-letter-templates', gpLetterTemplatesRouter);
+app.use('/api/communications', communicationsRouter);
 app.use('/api/imports', importsRouter);
 
 app.get('/healthz', (req, res) => {

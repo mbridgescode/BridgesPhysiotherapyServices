@@ -27,6 +27,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   TrendingDown as ProfitLossIcon,
+  MailOutline as MailIcon,
   Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -133,6 +134,12 @@ const Sidebar = ({
       icon: <SettingsIcon />,
       path: '/dashboard/settings',
       roles: ['admin', 'therapist'],
+    },
+    {
+      label: 'Communications',
+      icon: <MailIcon />,
+      path: '/dashboard/communications',
+      roles: ['admin', 'therapist', 'receptionist'],
     },
     {
       label: 'Audit Log',

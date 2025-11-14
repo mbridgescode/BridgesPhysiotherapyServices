@@ -27,6 +27,7 @@ import Invoices from './Invoices';
 import Payments from './Payments';
 import AuditLog from './AuditLog';
 import Admin from './Admin';
+import Communications from './Communications';
 import { styled, useTheme } from '@mui/material/styles';
 import apiClient from '../../utils/apiClient';
 import { emitAuthTokenChanged } from '../../utils/authEvents';
@@ -153,6 +154,7 @@ const Dashboard = () => {
             <Route path="reports" element={<Reports />} />
             <Route path="profit-loss" element={<ProfitLoss />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="communications" element={<Communications />} />
             <Route path="audit" element={<AuditLog />} />
             <Route path="admin" element={<Admin />} />
             <Route path="*" element={<Navigate to="." replace />} />
