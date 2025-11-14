@@ -238,7 +238,7 @@ const buildCancellationFeeInvoiceEmail = ({
 
   const notesLines = [
     `A same-day cancellation fee has been applied for ${treatmentSummary} on ${friendlyAppointmentDate}.`,
-    'Because the session was cancelled on the day, the full appointment fee is payable in line with our policy.',
+    'Because the session was cancelled on the day, 50% of the appointment fee is payable in line with our policy.',
     `Policy: ${DEFAULT_CANCELLATION_POLICY_URL}`,
   ];
 
