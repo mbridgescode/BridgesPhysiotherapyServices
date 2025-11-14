@@ -55,7 +55,7 @@ const buildFooterLines = (branding = {}) => {
   if (branding.address) {
     lines.push(branding.address);
   }
-  return lines.length ? lines : ['Bridges Physiotherapy Services', '07950 463134 | megan@bridgesphysiotherapy.co.uk'];
+  return lines.length ? lines : ['Bridges Physiotherapy Services', '07455 285117 | megan@bridgesphysiotherapy.co.uk'];
 };
 
 const buildAppointmentMessage = (appointments = []) => {

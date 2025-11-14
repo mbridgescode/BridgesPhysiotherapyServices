@@ -24,7 +24,7 @@ const buildFooterLines = (branding = {}) => {
     lines.push('Bridges Physiotherapy Services');
   }
   const contactBits = [
-    branding.phone || '07950 463134',
+    branding.phone || '07455 285117',
     branding.email || 'megan@bridgesphysiotherapy.co.uk',
   ].filter(Boolean);
   if (contactBits.length) {

@@ -14,7 +14,7 @@ const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_BRANDING = {
   clinic_name: 'Bridges Physiotherapy Services',
-  phone: '07950 463134',
+  phone: '07455 285117',
   email: 'hello@bridgesphysiotherapy.co.uk',
   website: 'https://www.bridgesphysiotherapy.co.uk',
   address: 'Community practice, Gloucestershire',
@@ -49,7 +49,7 @@ const createSamplePatient = () => ({
   surname: 'Morrison',
   preferred_name: 'Alex',
   email: 'client@example.com',
-  phone: '07950 463134',
+  phone: '07455 285117',
 });
 
 const createSampleAppointment = (overrides = {}) => ({
