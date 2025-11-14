@@ -185,11 +185,18 @@ const Appointments = ({ userData }) => {
   });
 
   useEffect(() => {
+    if (!userData) {
+      return undefined;
+    }
     let isMounted = true;
     const loadPatients = async () => {
       setPatientsLoading(true);
       try {
-        const response = await apiClient.get('/api/patients', { params: { limit: 200 } });
+        const params = { limit: 200 };
+        if (userData.role === 'therapist') {
+          params.view = 'all';
+        }
+        const response = await apiClient.get('/api/patients', { params });
         if (isMounted) {
           setPatients(response.data.patients || []);
         }
@@ -205,7 +212,7 @@ const Appointments = ({ userData }) => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [userData]);
 
   const therapistOptions = useMemo(() => {
     const therapistOnly = therapists.filter((therapist) => therapist.role === 'therapist');

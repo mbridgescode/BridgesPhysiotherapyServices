@@ -43,7 +43,11 @@ router.post(
         return res.status(404).json({ success: false, message: 'Patient not found' });
       }
 
-      if (!userCanAccessPatient(patient.toObject ? patient.toObject() : patient, req.user)) {
+      if (!userCanAccessPatient(
+        patient.toObject ? patient.toObject() : patient,
+        req.user,
+        { allowAllTherapists: true },
+      )) {
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
@@ -94,7 +98,11 @@ router.get(
         return res.status(404).json({ success: false, message: 'Patient not found' });
       }
 
-      if (!userCanAccessPatient(patient.toObject ? patient.toObject() : patient, req.user)) {
+      if (!userCanAccessPatient(
+        patient.toObject ? patient.toObject() : patient,
+        req.user,
+        { allowAllTherapists: true },
+      )) {
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
@@ -133,7 +141,11 @@ router.put(
         return res.status(404).json({ success: false, message: 'Patient not found' });
       }
 
-      if (!userCanAccessPatient(patient.toObject ? patient.toObject() : patient, req.user)) {
+      if (!userCanAccessPatient(
+        patient.toObject ? patient.toObject() : patient,
+        req.user,
+        { allowAllTherapists: true },
+      )) {
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
@@ -220,7 +232,11 @@ router.delete(
         return res.status(404).json({ success: false, message: 'Patient not found' });
       }
 
-      if (!userCanAccessPatient(patient.toObject ? patient.toObject() : patient, req.user)) {
+      if (!userCanAccessPatient(
+        patient.toObject ? patient.toObject() : patient,
+        req.user,
+        { allowAllTherapists: true },
+      )) {
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 

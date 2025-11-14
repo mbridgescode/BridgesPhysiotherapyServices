@@ -21,13 +21,21 @@ const buildPatientScopeQuery = (user) => {
   return scope.length ? { $or: scope } : null;
 };
 
-const userCanAccessPatient = (patient, user) => {
+const userCanAccessPatient = (patient, user, options = {}) => {
   if (!patient || !user) {
     return false;
   }
+
+  const { allowAllTherapists = false } = options;
+
   if (user.role === 'admin') {
     return true;
   }
+
+  if (allowAllTherapists && user.role === 'therapist') {
+    return true;
+  }
+
   const employeeId = user.employeeID;
   if (employeeId !== null && employeeId !== undefined) {
     if (Number(patient.primary_therapist_id) === Number(employeeId)) {
