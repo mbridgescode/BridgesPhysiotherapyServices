@@ -9,6 +9,8 @@ const brandingSchema = new mongoose.Schema({
   phone: { type: String, trim: true },
   email: { type: String, trim: true },
   website: { type: String, trim: true },
+  privacy_policy_url: { type: String, trim: true },
+  cancellation_policy_url: { type: String, trim: true },
 }, { _id: false });
 
 const emailTemplateSchema = new mongoose.Schema({

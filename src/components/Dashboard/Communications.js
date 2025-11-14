@@ -102,6 +102,7 @@ const Communications = () => {
   const isAdmin = userData?.role === 'admin';
   const canManageEmailTemplates = isAdmin;
   const canManageGpTemplates = ['admin', 'therapist'].includes(userData?.role);
+  const canEditContactDetails = isAdmin;
 
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [emailDialog, setEmailDialog] = useState(EMAIL_DIALOG_INITIAL);
@@ -109,6 +110,22 @@ const Communications = () => {
   const [emailTemplatesError, setEmailTemplatesError] = useState('');
   const [savingEmailTemplates, setSavingEmailTemplates] = useState(false);
   const [emailSnack, setEmailSnack] = useState('');
+  const [defaultEmailTemplates, setDefaultEmailTemplates] = useState([]);
+  const [defaultTemplatesLoading, setDefaultTemplatesLoading] = useState(true);
+  const [defaultTemplatesError, setDefaultTemplatesError] = useState('');
+  const [previewDialog, setPreviewDialog] = useState({ open: false, template: null });
+  const [contactForm, setContactForm] = useState({
+    clinic_name: '',
+    phone: '',
+    email: '',
+    website: '',
+    address: '',
+    privacy_policy_url: '',
+    cancellation_policy_url: '',
+  });
+  const [contactSaving, setContactSaving] = useState(false);
+  const [contactSnack, setContactSnack] = useState('');
+  const [contactError, setContactError] = useState('');
 
   const [communicationsFilters, setCommunicationsFilters] = useState({
     search: '',
@@ -159,9 +176,20 @@ const Communications = () => {
     setEmailTemplatesLoading(true);
     try {
       const response = await apiClient.get('/api/settings/clinic');
-      const templates = response.data.settings?.email_templates || [];
+      const settings = response.data.settings || {};
+      const templates = settings.email_templates || [];
       setEmailTemplates(templates);
       setEmailTemplatesError('');
+      const branding = settings.branding || {};
+      setContactForm({
+        clinic_name: branding.clinic_name || '',
+        phone: branding.phone || '',
+        email: branding.email || '',
+        website: branding.website || '',
+        address: branding.address || '',
+        privacy_policy_url: branding.privacy_policy_url || '',
+        cancellation_policy_url: branding.cancellation_policy_url || '',
+      });
     } catch (err) {
       console.error('Failed to load email templates', err);
       setEmailTemplatesError(err?.response?.data?.message || 'Unable to load email templates.');
@@ -173,6 +201,24 @@ const Communications = () => {
   useEffect(() => {
     loadEmailTemplates();
   }, [loadEmailTemplates]);
+
+  const loadDefaultEmailTemplates = useCallback(async () => {
+    setDefaultTemplatesLoading(true);
+    try {
+      const response = await apiClient.get('/api/settings/email-templates/preview');
+      setDefaultEmailTemplates(response.data.templates || []);
+      setDefaultTemplatesError('');
+    } catch (err) {
+      console.error('Failed to load system email templates', err);
+      setDefaultTemplatesError(err?.response?.data?.message || 'Unable to load system templates.');
+    } finally {
+      setDefaultTemplatesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDefaultEmailTemplates();
+  }, [loadDefaultEmailTemplates]);
 
   const closeEmailDialog = () => {
     setEmailDialog(EMAIL_DIALOG_INITIAL);
@@ -196,13 +242,13 @@ const Communications = () => {
     }
     setSavingEmailTemplates(true);
     try {
-      const sanitized = nextTemplates.map((template) => ({
-        template_name: template.template_name?.trim() || 'Untitled template',
-        subject: template.subject?.trim() || 'Subject',
-        body: template.body || '',
-      }));
+    const sanitized = nextTemplates.map((template) => ({
+      template_name: template.template_name?.trim() || 'Untitled template',
+      subject: template.subject?.trim() || 'Subject',
+      body: template.body || '',
+    }));
       await apiClient.put('/api/settings/clinic', { email_templates: sanitized });
-      setEmailTemplates(sanitized);
+      await loadEmailTemplates();
       setEmailSnack('Email templates saved.');
       setEmailDialog(EMAIL_DIALOG_INITIAL);
     } catch (err) {
@@ -559,6 +605,68 @@ const Communications = () => {
 
   const totalPages = Math.max(1, Math.ceil((communicationsState.total || 0) / rowsPerPage));
 
+  const defaultTemplateColumns = useMemo(() => [
+    {
+      id: 'label',
+      label: 'Template',
+      minWidth: 220,
+      render: (row) => (
+        <Box>
+          <Typography variant="body2" fontWeight={600}>{row.label}</Typography>
+          <Typography variant="caption" color="text.secondary">{row.description}</Typography>
+        </Box>
+      ),
+    },
+    {
+      id: 'subject',
+      label: 'Subject',
+      minWidth: 220,
+    },
+    {
+      id: 'actions',
+      label: 'Actions',
+      minWidth: 120,
+      align: 'right',
+      sortable: false,
+      filterable: false,
+      render: (row) => (
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => setPreviewDialog({ open: true, template: row })}
+        >
+          View
+        </Button>
+      ),
+    },
+  ], []);
+
+  const handleContactFieldChange = (field) => (event) => {
+    const { value } = event.target;
+    setContactForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+    setContactError('');
+  };
+
+  const handleSaveContact = async () => {
+    if (!canEditContactDetails) {
+      return;
+    }
+    setContactSaving(true);
+    try {
+      await apiClient.put('/api/settings/clinic', { branding: contactForm });
+      setContactSnack('Contact details updated.');
+      await loadEmailTemplates();
+    } catch (err) {
+      console.error('Failed to update contact details', err);
+      setContactError(err?.response?.data?.message || 'Unable to save contact details.');
+    } finally {
+      setContactSaving(false);
+    }
+  };
+
   return (
     <Box display="flex" flexDirection="column" gap={3}>
       <Card>
@@ -586,6 +694,123 @@ const Communications = () => {
               maxHeight={360}
               emptyMessage="No templates configured."
             />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h5" gutterBottom>
+            Standard patient communications
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            These templates power booking confirmations, invoices, and cancellation emails.
+          </Typography>
+          {defaultTemplatesError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {defaultTemplatesError}
+            </Alert>
+          )}
+          {defaultTemplatesLoading ? (
+            <CircularProgress size={24} />
+          ) : (
+            <DataTable
+              columns={defaultTemplateColumns}
+              rows={defaultEmailTemplates}
+              getRowId={(row) => row.id}
+              maxHeight={360}
+              emptyMessage="No templates available."
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h5" gutterBottom>
+            Contact details & policy links
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Update the contact lines and helpful links that appear across your patient emails.
+          </Typography>
+          {contactError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {contactError}
+            </Alert>
+          )}
+          <Grid container spacing={2} mt={1}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Clinic name"
+                value={contactForm.clinic_name}
+                onChange={handleContactFieldChange('clinic_name')}
+                fullWidth
+                InputProps={{ readOnly: !canEditContactDetails }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Phone number"
+                value={contactForm.phone}
+                onChange={handleContactFieldChange('phone')}
+                fullWidth
+                InputProps={{ readOnly: !canEditContactDetails }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Contact email"
+                value={contactForm.email}
+                onChange={handleContactFieldChange('email')}
+                fullWidth
+                InputProps={{ readOnly: !canEditContactDetails }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Website"
+                value={contactForm.website}
+                onChange={handleContactFieldChange('website')}
+                fullWidth
+                InputProps={{ readOnly: !canEditContactDetails }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Address"
+                value={contactForm.address}
+                onChange={handleContactFieldChange('address')}
+                fullWidth
+                multiline
+                minRows={2}
+                InputProps={{ readOnly: !canEditContactDetails }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Privacy policy URL"
+                value={contactForm.privacy_policy_url}
+                onChange={handleContactFieldChange('privacy_policy_url')}
+                fullWidth
+                InputProps={{ readOnly: !canEditContactDetails }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Cancellation policy URL"
+                value={contactForm.cancellation_policy_url}
+                onChange={handleContactFieldChange('cancellation_policy_url')}
+                fullWidth
+                InputProps={{ readOnly: !canEditContactDetails }}
+              />
+            </Grid>
+          </Grid>
+          {canEditContactDetails && (
+            <Box display="flex" justifyContent="flex-end" mt={2}>
+              <Button variant="contained" onClick={handleSaveContact} disabled={contactSaving}>
+                {contactSaving ? 'Saving...' : 'Save contact details'}
+              </Button>
+            </Box>
           )}
         </CardContent>
       </Card>
@@ -910,6 +1135,55 @@ const Communications = () => {
           {gpSnack}
         </Alert>
       </Snackbar>
+      <Snackbar
+        open={Boolean(contactSnack)}
+        autoHideDuration={4000}
+        onClose={() => setContactSnack('')}
+      >
+        <Alert severity="success" onClose={() => setContactSnack('')}>
+          {contactSnack}
+        </Alert>
+      </Snackbar>
+
+      <Dialog
+        open={previewDialog.open}
+        onClose={() => setPreviewDialog({ open: false, template: null })}
+        fullWidth
+        maxWidth="md"
+      >
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="h6">{previewDialog.template?.label || 'Template preview'}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {previewDialog.template?.description}
+          </Typography>
+          <TextField
+            label="Subject"
+            value={previewDialog.template?.subject || ''}
+            InputProps={{ readOnly: true }}
+            fullWidth
+          />
+          <Box
+            sx={{
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 2,
+              p: 2,
+              maxHeight: 400,
+              overflowY: 'auto',
+              backgroundColor: 'background.paper',
+            }}
+          >
+            <div
+              dangerouslySetInnerHTML={{ __html: previewDialog.template?.html || '<p>No preview available.</p>' }}
+            />
+          </Box>
+          <Box display="flex" justifyContent="flex-end">
+            <Button onClick={() => setPreviewDialog({ open: false, template: null })}>
+              Close
+            </Button>
+          </Box>
+        </CardContent>
+      </Dialog>
     </Box>
   );
 };

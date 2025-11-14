@@ -1,7 +1,7 @@
 const { renderEmailTemplate } = require('./baseEmailTemplate');
 
-const PRIVACY_POLICY_URL = process.env.PRIVACY_POLICY_URL || 'https://www.bridgesphysiotherapy.co.uk/privacy-policy';
-const CANCELLATION_POLICY_URL =
+const DEFAULT_PRIVACY_POLICY_URL = process.env.PRIVACY_POLICY_URL || 'https://www.bridgesphysiotherapy.co.uk/privacy-policy';
+const DEFAULT_CANCELLATION_POLICY_URL =
   process.env.CANCELLATION_POLICY_URL || 'https://www.bridgesphysiotherapy.co.uk/cancellation-charges';
 
 const formatDateTime = (value, timeZone = 'Europe/London') => {
@@ -78,22 +78,30 @@ const buildAppointmentMessage = (appointments = []) => {
   };
 };
 
-const buildComplianceBlockHtml = () => `
+const buildComplianceBlockHtml = (branding = {}) => {
+  const privacyUrl = branding.privacy_policy_url || DEFAULT_PRIVACY_POLICY_URL;
+  const cancellationUrl = branding.cancellation_policy_url || DEFAULT_CANCELLATION_POLICY_URL;
+  return `
   <div style="margin-top:24px;padding:14px 18px;background:rgba(15,23,42,0.04);border-radius:12px;">
     <strong style="display:block;margin-bottom:6px;color:#0f172a;">Helpful links</strong>
-    <a href="${PRIVACY_POLICY_URL}" style="display:inline-block;color:#1f3e82;text-decoration:none;margin-right:18px;">
+    <a href="${privacyUrl}" style="display:inline-block;color:#1f3e82;text-decoration:none;margin-right:18px;">
       Privacy policy
     </a>
-    <a href="${CANCELLATION_POLICY_URL}" style="display:inline-block;color:#1f3e82;text-decoration:none;">
+    <a href="${cancellationUrl}" style="display:inline-block;color:#1f3e82;text-decoration:none;">
       Cancellation charges
     </a>
   </div>
 `;
+};
 
-const buildComplianceText = () => [
-  `Privacy policy: ${PRIVACY_POLICY_URL}`,
-  `Cancellation charges: ${CANCELLATION_POLICY_URL}`,
-];
+const buildComplianceText = (branding = {}) => {
+  const privacyUrl = branding.privacy_policy_url || DEFAULT_PRIVACY_POLICY_URL;
+  const cancellationUrl = branding.cancellation_policy_url || DEFAULT_CANCELLATION_POLICY_URL;
+  return [
+    `Privacy policy: ${privacyUrl}`,
+    `Cancellation charges: ${cancellationUrl}`,
+  ];
+};
 
 const buildAppointmentsTable = (appointments = [], timeZone) => {
   const rows = appointments
@@ -134,6 +142,7 @@ const buildPlainText = ({
   clinicLines = [],
   extraNote,
   appointmentMessage,
+  complianceLines = [],
 }) => {
   const lines = [
     `Hello ${patientName || 'there'},`,
@@ -157,8 +166,9 @@ const buildPlainText = ({
   if (extraNote) {
     lines.push('', extraNote);
   }
-  const complianceLines = buildComplianceText();
-  lines.push('', ...complianceLines);
+  if (complianceLines.length) {
+    lines.push('', ...complianceLines);
+  }
   if (clinicLines.length) {
     lines.push('', clinicLines.join(' | '));
   }
@@ -191,7 +201,7 @@ const buildBookingConfirmationEmail = ({
           </div>`
         : ''
     }
-    ${buildComplianceBlockHtml()}
+    ${buildComplianceBlockHtml(branding)}
   `;
 
   const html = renderEmailTemplate({
@@ -209,6 +219,7 @@ const buildBookingConfirmationEmail = ({
     clinicLines,
     extraNote: additionalNote,
     appointmentMessage: appointmentMessage.text,
+    complianceLines: buildComplianceText(branding),
   });
 
   const subject = `Booking confirmation - ${formatDateShort(appointments[0]?.date, timeZone)}`;

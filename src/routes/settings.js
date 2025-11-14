@@ -18,6 +18,8 @@ const DEFAULT_BRANDING = {
   email: 'hello@bridgesphysiotherapy.co.uk',
   website: 'https://www.bridgesphysiotherapy.co.uk',
   address: 'Community practice, Gloucestershire',
+  privacy_policy_url: process.env.PRIVACY_POLICY_URL || 'https://www.bridgesphysiotherapy.co.uk/privacy-policy',
+  cancellation_policy_url: process.env.CANCELLATION_POLICY_URL || 'https://www.bridgesphysiotherapy.co.uk/cancellation-charges',
 };
 
 const DEFAULT_PAYMENT_INSTRUCTIONS = {
@@ -343,6 +345,38 @@ router.post(
           provider: emailResult.provider,
           simulated: emailResult.simulated,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.get(
+  '/email-templates/preview',
+  authenticate,
+  authorize('admin', 'therapist', 'receptionist'),
+  async (req, res, next) => {
+    try {
+      const rawSettings = await getLatestClinicSettings();
+      const clinicSettings = withClinicDefaults(rawSettings);
+
+      const templates = TEST_EMAIL_DEFINITIONS.map((definition) => {
+        const payload = definition.build({ clinicSettings });
+        return {
+          id: definition.id,
+          label: definition.label,
+          description: definition.description,
+          subject: payload.subject,
+          html: payload.html,
+          text: payload.text,
+          metadata: payload.metadata || {},
+        };
+      });
+
+      res.json({
+        success: true,
+        templates,
       });
     } catch (error) {
       next(error);
