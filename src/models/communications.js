@@ -18,7 +18,7 @@ const CommunicationSchema = new mongoose.Schema({
   content: encryptedStringField({ required: true }),
   delivery_status: {
     type: String,
-    enum: ['pending', 'sent', 'delivered', 'failed'],
+    enum: ['pending', 'sent', 'delivered', 'failed', 'suppressed'],
     default: 'pending',
   },
   metadata: { type: Map, of: String },

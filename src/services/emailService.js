@@ -1,9 +1,59 @@
 const fs = require('fs');
 const axios = require('axios');
 const Communication = require('../models/communications');
+const Patient = require('../models/patients');
 const { resendApiKey, defaultFromEmail } = require('../config/env');
 
 const hasResendProvider = Boolean(resendApiKey);
+
+const shouldSuppressEmailForPatient = async (patientId) => {
+  if (!patientId) {
+    return false;
+  }
+  try {
+    const patient = await Patient.findOne({ patient_id: patientId }).select('email_active');
+    if (patient && patient.email_active === false) {
+      return true;
+    }
+  } catch (error) {
+    console.error('Failed to evaluate patient email preference', { patientId, error });
+  }
+  return false;
+};
+
+const logCommunicationRecord = async ({
+  patientId,
+  subject,
+  text,
+  html,
+  to,
+  deliveryStatus,
+  providerMessageId,
+  errorMessage,
+  metadata,
+}) => {
+  if (!patientId) {
+    return;
+  }
+  try {
+    await Communication.create({
+      communication_id: Date.now(),
+      patient_id: patientId,
+      type: 'email',
+      subject,
+      content: text || html,
+      delivery_status: deliveryStatus,
+      metadata: {
+        to: Array.isArray(to) ? to.join(',') : to,
+        providerMessageId: providerMessageId || '',
+        errorMessage: errorMessage || '',
+        ...(metadata || {}),
+      },
+    });
+  } catch (error) {
+    console.error('Failed to log communication record', error);
+  }
+};
 
 const sendTransactionalEmail = async ({
   to,
@@ -56,6 +106,32 @@ const sendTransactionalEmail = async ({
     attachments: normalizedAttachments,
   };
 
+  if (patientId && await shouldSuppressEmailForPatient(patientId)) {
+    const suppressionMessage = 'Email not sent: patient email preference disabled';
+    await logCommunicationRecord({
+      patientId,
+      subject,
+      text,
+      html,
+      to,
+      deliveryStatus: 'suppressed',
+      providerMessageId: null,
+      errorMessage: suppressionMessage,
+      metadata: {
+        ...metadata,
+        suppressionReason: 'email_inactive',
+      },
+    });
+    return {
+      status: 'suppressed',
+      providerMessageId: null,
+      errorMessage: suppressionMessage,
+      response: null,
+      simulated: true,
+      provider: null,
+    };
+  }
+
   let response;
   let status = 'queued';
   let providerMessageId;
@@ -102,24 +178,17 @@ const sendTransactionalEmail = async ({
   }
 
   if (patientId) {
-    try {
-      await Communication.create({
-        communication_id: Date.now(),
-        patient_id: patientId,
-        type: 'email',
-        subject,
-        content: text || html,
-        delivery_status: status === 'sent' ? 'sent' : status === 'failed' ? 'failed' : 'pending',
-        metadata: {
-          to: Array.isArray(to) ? to.join(',') : to,
-          providerMessageId: providerMessageId || '',
-          errorMessage: errorMessage || '',
-          ...(metadata || {}),
-        },
-      });
-    } catch (error) {
-      console.error('Failed to log communication record', error);
-    }
+    await logCommunicationRecord({
+      patientId,
+      subject,
+      text,
+      html,
+      to,
+      deliveryStatus: status === 'sent' ? 'sent' : status === 'failed' ? 'failed' : 'pending',
+      providerMessageId,
+      errorMessage,
+      metadata,
+    });
   }
 
   return {

@@ -186,7 +186,7 @@ const formatAddressLines = (value) => {
   return [];
 };
 
-const normalizePaymentInstructionLines = (clinicSettings = {}) => {
+const normalizePaymentInstructionLines = (clinicSettings = {}, invoice = null) => {
   const instructions = clinicSettings?.payment_instructions;
   if (instructions?.text) {
     return instructions.text
@@ -203,11 +203,12 @@ const normalizePaymentInstructionLines = (clinicSettings = {}) => {
   const paymentDetails = branding.payment_details || {};
   return [
     'Please make all payments to:',
-    branding.payment_contact || branding.clinic_name || 'Bridges Physiotherapy Services',
-    paymentDetails.bank_name ? `Bank: ${paymentDetails.bank_name}` : null,
-    paymentDetails.sort_code ? `Sort code: ${paymentDetails.sort_code}` : null,
-    paymentDetails.account_number ? `Account number: ${paymentDetails.account_number}` : null,
-    'Reference: invoice number',
+    'Megan Bridges',
+    'Account Number: 80856460',
+    'Sort Code: 30-92-16',
+    invoice?.invoice_number
+      ? `Reference: ${invoice.invoice_number}`
+      : 'Reference: invoice number',
   ].filter(Boolean);
 };
 
@@ -221,7 +222,7 @@ const buildPaymentInstructions = ({
     : [];
   const resolvedLines = explicitLines.length
     ? explicitLines
-    : normalizePaymentInstructionLines(clinicSettings);
+    : normalizePaymentInstructionLines(clinicSettings, invoice);
   const lines = [...resolvedLines];
 
   if (invoice?.invoice_number && !lines.some((line) => /reference/i.test(line))) {

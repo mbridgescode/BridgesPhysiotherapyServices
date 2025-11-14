@@ -1,4 +1,5 @@
 const Appointment = require('../models/appointments');
+const Communication = require('../models/communications');
 const Invoice = require('../models/invoices');
 const Payment = require('../models/payments');
 const Patient = require('../models/patients');
@@ -298,15 +299,32 @@ const importPastDataRows = async ({
       const appointmentId = await Counter.next('appointment_id', 1);
       const treatmentId = Date.now() + appointmentId;
 
-      const appointmentPayload = {
-        appointment_id: appointmentId,
-        patient_id: patient.patient_id,
-        patient: patientDoc._id,
+    const patientAddress = (() => {
+      const line1 = patient?.address?.line1;
+      const line2 = patient?.address?.line2;
+      const city = patient?.address?.city;
+      const postcode = patient?.address?.postcode;
+
+      const addressParts = [line1, line2, city, postcode]
+        .map((value) => (value ? value.toString().trim() : ''))
+        .filter(Boolean);
+
+      if (addressParts.length === 0) {
+        return null;
+      }
+
+      return addressParts.join(', ');
+    })();
+
+    const appointmentPayload = {
+      appointment_id: appointmentId,
+      patient_id: patient.patient_id,
+      patient: patientDoc._id,
         employeeID,
         therapist: therapistDoc?._id || actorDoc?._id,
         date: row.appointmentDate,
         duration_minutes: 60,
-        location: 'Clinic',
+      location: patientAddress ? `Patient Address: ${patientAddress}` : 'Clinic',
         room: '',
         first_name: patient.first_name,
         surname: patient.surname,
@@ -456,6 +474,12 @@ const importPastDataRows = async ({
       await refreshInvoiceWithPayments(invoice);
       invoice.updatedBy = actorId || actorDoc?._id;
       await invoice.save();
+      await logInvoiceIssuedCommunication({
+        patientId: patient.patient_id,
+        invoiceNumber: invoice.invoice_number,
+        appointmentDate: row.appointmentDate,
+        amount: row.invoiceAmount,
+      });
 
       summary.createdInvoices.push({
         invoice_number: invoice.invoice_number,
@@ -478,6 +502,37 @@ const importPastDataRows = async ({
   }
 
   return summary;
+};
+
+const logInvoiceIssuedCommunication = async ({
+  patientId,
+  invoiceNumber,
+  appointmentDate,
+  amount,
+}) => {
+  if (!patientId) {
+    return;
+  }
+  try {
+    await Communication.create({
+      communication_id: Date.now(),
+      patient_id: patientId,
+      type: 'note',
+      subject: `Invoice ${invoiceNumber} issued`,
+      content: `Invoice ${invoiceNumber} for £${Number(amount || 0).toFixed(2)} was recorded on ${formatDateForSummary(appointmentDate)} during legacy import.`,
+      delivery_status: 'sent',
+      metadata: {
+        invoice_number: invoiceNumber,
+        source: 'legacy-import',
+      },
+    });
+  } catch (error) {
+    console.error('Failed to log invoice communication', {
+      patientId,
+      invoiceNumber,
+      error,
+    });
+  }
 };
 
 module.exports = {
