@@ -1,5 +1,10 @@
 // src/components/Dashboard/Home.js
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   Box,
   Grid,
@@ -17,6 +22,7 @@ import {
 } from '@mui/material';
 import TUICalendar from './TUICalendar';
 import apiClient from '../../utils/apiClient';
+import { useTherapists } from '../../hooks/useTherapists';
 
 const surfaceCardStyles = {
   borderRadius: 10,
