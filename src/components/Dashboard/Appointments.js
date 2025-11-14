@@ -1,4 +1,4 @@
-// src/components/Dashboard/Appointments.js
+﻿// src/components/Dashboard/Appointments.js
 
 import React, {
   useState,
@@ -10,6 +10,7 @@ import React, {
 import {
   Box,
   Card,
+  CardActionArea,
   CardContent,
   Typography,
   Checkbox,
@@ -81,7 +82,37 @@ const COMPLETION_OUTCOME_OPTIONS = [
   { value: 'other', label: 'Other (add note)' },
 ];
 
-const COMPLETED_APPOINTMENT_STATUSES = ['completed', 'completed_manual'];
+const DEFAULT_VISIBLE_STATUS = 'scheduled';
+
+const getTherapistInfo = (appointment) => {
+  if (!appointment) {
+    return { name: '', employeeId: null };
+  }
+  const therapistRecord = typeof appointment.therapist === 'object' ? appointment.therapist : {};
+  const name = (
+    appointment.therapistName
+    || appointment.therapist_name
+    || therapistRecord?.name
+    || therapistRecord?.username
+    || appointment.therapistUsername
+  ) || '';
+  const employeeId = appointment.employeeID ?? therapistRecord?.employeeID ?? null;
+  return { name, employeeId };
+};
+
+const buildTreatmentNotePreview = (note, limit = 120) => {
+  if (!note || typeof note !== 'string') {
+    return 'No treatment notes recorded.';
+  }
+  const trimmed = note.trim();
+  if (!trimmed) {
+    return 'No treatment notes recorded.';
+  }
+  if (trimmed.length <= limit) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, limit)}...`;
+};
 
 const extractDateParts = (value) => {
   if (!value) {
@@ -185,11 +216,14 @@ const Appointments = ({ userData }) => {
     submitError: '',
     submitting: false,
   });
-  const [mobileShowAllAppointments, setMobileShowAllAppointments] = useState(!isMobile);
-
-  useEffect(() => {
-    setMobileShowAllAppointments(!isMobile);
-  }, [isMobile]);
+  const [showAllAppointments, setShowAllAppointments] = useState(false);
+  const [noteDialog, setNoteDialog] = useState({
+    open: false,
+    appointment: null,
+    value: '',
+    saving: false,
+    error: '',
+  });
 
   useEffect(() => {
     if (!userData) {
@@ -332,6 +366,73 @@ const Appointments = ({ userData }) => {
       closeManualInvoiceDialog();
     }
   }, [closeManualInvoiceDialog, manualInvoiceDialog.appointment, performCompletionUpdate]);
+
+  const closeNoteDialog = useCallback(() => {
+    setNoteDialog({
+      open: false,
+      appointment: null,
+      value: '',
+      saving: false,
+      error: '',
+    });
+  }, []);
+
+  const openTreatmentNoteDialog = useCallback((appointment) => {
+    if (!appointment) {
+      return;
+    }
+    setNoteDialog({
+      open: true,
+      appointment,
+      value: appointment.treatment_notes || '',
+      saving: false,
+      error: '',
+    });
+  }, []);
+
+  const handleSaveTreatmentNotes = useCallback(async () => {
+    if (!noteDialog.appointment) {
+      return;
+    }
+    const currentAppointmentId = noteDialog.appointment.appointment_id;
+    const updatedValue = noteDialog.value;
+    setNoteDialog((prev) => ({ ...prev, saving: true, error: '' }));
+    try {
+      const response = await apiClient.put(
+        `/api/appointments/${currentAppointmentId}/notes`,
+        { treatment_notes: updatedValue },
+      );
+      const updatedAppointment = response.data?.appointment;
+      if (updatedAppointment) {
+        setAppointments((prevAppointments) => {
+          if (!Array.isArray(prevAppointments)) {
+            return prevAppointments;
+          }
+          return prevAppointments.map((appointment) => (
+            appointment.appointment_id === updatedAppointment.appointment_id
+              ? { ...appointment, ...updatedAppointment }
+              : appointment
+          ));
+        });
+      } else {
+        setAppointments((prevAppointments) => {
+          if (!Array.isArray(prevAppointments)) {
+            return prevAppointments;
+          }
+          return prevAppointments.map((appointment) => (
+            appointment.appointment_id === currentAppointmentId
+              ? { ...appointment, treatment_notes: updatedValue }
+              : appointment
+          ));
+        });
+      }
+      setSubmitSuccess('Treatment notes updated.');
+      closeNoteDialog();
+    } catch (err) {
+      const message = err?.response?.data?.message || 'Failed to save treatment notes.';
+      setNoteDialog((prev) => ({ ...prev, saving: false, error: message }));
+    }
+  }, [closeNoteDialog, noteDialog.appointment, noteDialog.value, setAppointments]);
 
   const closeEditDialog = useCallback(() => {
     setEditDialog({
@@ -593,16 +694,22 @@ const Appointments = ({ userData }) => {
         return name.includes(normalizedSearch) || treatment.includes(normalizedSearch);
       });
     }
-    if (isMobile && !mobileShowAllAppointments) {
+    if (!showAllAppointments) {
       base = base.filter((appointment) => {
         const normalizedStatus = String(
-          appointment.completion_status || appointment.status || '',
+          appointment.completion_status || appointment.status || DEFAULT_VISIBLE_STATUS,
         ).toLowerCase();
-        return !COMPLETED_APPOINTMENT_STATUSES.includes(normalizedStatus);
+        if (normalizedStatus === DEFAULT_VISIBLE_STATUS) {
+          return true;
+        }
+        return (
+          normalizedStatus === ''
+          && DEFAULT_VISIBLE_STATUS === 'scheduled'
+        );
       });
     }
     return base;
-  }, [appointments, searchTerm, isMobile, mobileShowAllAppointments]);
+  }, [appointments, searchTerm, showAllAppointments]);
 
   const appointmentStatusOptions = useMemo(
     () =>
@@ -700,11 +807,64 @@ const Appointments = ({ userData }) => {
       ),
     },
     {
+      id: 'therapist',
+      label: 'Therapist',
+      minWidth: 180,
+      valueGetter: (row) => getTherapistInfo(row).name,
+      render: (row) => {
+        const therapist = getTherapistInfo(row);
+        if (!therapist.name && !therapist.employeeId) {
+          return (
+            <Typography variant="body2" color="text.secondary">
+              Unassigned
+            </Typography>
+          );
+        }
+        return (
+          <Box>
+            <Typography variant="body2" fontWeight={600}>
+              {therapist.name || 'Unassigned'}
+            </Typography>
+            {therapist.employeeId && (
+              <Typography variant="caption" color="text.secondary">
+                #{therapist.employeeId}
+              </Typography>
+            )}
+          </Box>
+        );
+      },
+    },
+    {
       id: 'treatment_description',
       label: 'Treatment',
       minWidth: 200,
       valueGetter: (row) => row.treatment_description || '',
       render: (row) => row.treatment_description || 'No Treatment',
+    },
+    {
+      id: 'treatment_notes',
+      label: 'Treatment Notes',
+      minWidth: 240,
+      sortable: false,
+      filterable: false,
+      render: (row) => (
+        <Box>
+          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>
+            {buildTreatmentNotePreview(row.treatment_notes)}
+          </Typography>
+          <Button
+            size="small"
+            variant="text"
+            sx={{ mt: 1, px: 0, minWidth: 0 }}
+            onClick={(event) => {
+              event.stopPropagation();
+              openTreatmentNoteDialog(row);
+            }}
+          >
+            View notes
+          </Button>
+        </Box>
+      ),
     },
     {
       id: 'location',
@@ -760,6 +920,7 @@ const Appointments = ({ userData }) => {
 
   const canManageAppointments = ['admin', 'therapist', 'receptionist'].includes(userData?.role);
   const canUpdateOutcome = ['admin', 'therapist'].includes(userData?.role);
+  const canEditTreatmentNotes = ['admin', 'therapist'].includes(userData?.role);
 
   const actionButtonSx = {
     px: 2.5,
@@ -768,6 +929,11 @@ const Appointments = ({ userData }) => {
     textTransform: 'none',
     whiteSpace: 'nowrap',
     fontWeight: 600,
+  };
+
+  const handleActionClick = (action) => (event) => {
+    event.stopPropagation();
+    action();
   };
 
   const renderRowActions = (row) => (
@@ -785,7 +951,7 @@ const Appointments = ({ userData }) => {
         <Button
           size="small"
           variant="outlined"
-          onClick={() => openEditDialog(row)}
+          onClick={handleActionClick(() => openEditDialog(row))}
           sx={{ ...actionButtonSx, color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
           fullWidth={isMobile}
         >
@@ -797,7 +963,7 @@ const Appointments = ({ userData }) => {
           size="small"
           variant="contained"
           color="secondary"
-          onClick={() => openCompletionDialog(row)}
+          onClick={handleActionClick(() => openCompletionDialog(row))}
           sx={{ ...actionButtonSx }}
           fullWidth={isMobile}
         >
@@ -809,7 +975,7 @@ const Appointments = ({ userData }) => {
           size="small"
           color="warning"
           variant="contained"
-          onClick={() => handleCancelAppointment(row.appointment_id)}
+          onClick={handleActionClick(() => handleCancelAppointment(row.appointment_id))}
           disabled={row.status === 'cancelled'}
           sx={{ ...actionButtonSx }}
           fullWidth={isMobile}
@@ -820,46 +986,57 @@ const Appointments = ({ userData }) => {
     </Box>
   );
 
-  const renderAppointmentCard = (row) => {
+    const renderAppointmentCard = (row) => {
     const eventDate = row.date ? new Date(row.date) : null;
+    const therapist = getTherapistInfo(row);
     return (
       <Card variant="outlined" sx={{ backgroundColor: 'rgba(15,23,42,0.6)' }}>
-        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="subtitle1" fontWeight={600}>
-              {row.first_name} {row.surname}
+        <CardActionArea onClick={() => openTreatmentNoteDialog(row)} sx={{ textAlign: 'left' }}>
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle1" fontWeight={600}>
+                {row.first_name} {row.surname}
+              </Typography>
+              {row.patient_id && (
+                <Typography variant="caption" color="text.secondary">
+                  #{row.patient_id}
+                </Typography>
+              )}
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              {eventDate
+                ? `${eventDate.toLocaleDateString()} · ${eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                : 'Date TBC'}
             </Typography>
-            {row.patient_id && (
-              <Typography variant="caption" color="text.secondary">
-                #{row.patient_id}
+            <Typography variant="body2">
+              {row.treatment_description || 'No Treatment'} · {formatStatusLabel(row.status || row.completion_status)}
+            </Typography>
+            {row.location && (
+              <Typography variant="body2" color="text.secondary">
+                {row.location}
               </Typography>
             )}
-          </Box>
-          <Typography variant="body2" color="text.secondary">
-            {eventDate
-              ? `${eventDate.toLocaleDateString()} · ${eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-              : 'Date TBC'}
-          </Typography>
-          <Typography variant="body2">
-            {row.treatment_description || 'No Treatment'} · {formatStatusLabel(row.status || row.completion_status)}
-          </Typography>
-          {row.location && (
-            <Typography variant="body2" color="text.secondary">
-              {row.location}
+            {therapist.name && (
+              <Typography variant="body2" color="text.secondary">
+                Therapist: {therapist.name}
+                {therapist.employeeId ? ` (#${therapist.employeeId})` : ''}
+              </Typography>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>
+              {buildTreatmentNotePreview(row.treatment_notes, 140)}
             </Typography>
-          )}
-          {row.completion_note && (
-            <Typography variant="caption" color="text.secondary">
-              Note: {row.completion_note}
+            <Typography variant="caption" color="primary.main" fontWeight={600}>
+              Tap to view or edit treatment notes
             </Typography>
-          )}
+          </CardContent>
+        </CardActionArea>
+        <Box px={2} pb={2}>
           {renderRowActions(row)}
-        </CardContent>
+        </Box>
       </Card>
     );
   };
-
-  if (canManageAppointments || canUpdateOutcome) {
+if (canManageAppointments || canUpdateOutcome) {
     appointmentColumns.push({
       id: 'actions',
       label: 'Actions',
@@ -1215,19 +1392,33 @@ const Appointments = ({ userData }) => {
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search by patient name or treatment"
         />
-        {isMobile && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 1,
+            mt: -1,
+            mb: 1,
+          }}
+        >
           <FormControlLabel
             control={(
               <Checkbox
                 size="small"
-                checked={mobileShowAllAppointments}
-                onChange={(event) => setMobileShowAllAppointments(event.target.checked)}
+                checked={showAllAppointments}
+                onChange={(event) => setShowAllAppointments(event.target.checked)}
               />
             )}
             label="Show all appointments"
-            sx={{ alignSelf: 'flex-start', mt: -1, mb: 1 }}
+            sx={{ marginRight: 0 }}
           />
-        )}
+          {!showAllAppointments && (
+            <Typography variant="caption" color="text.secondary">
+              Showing scheduled appointments
+            </Typography>
+          )}
+        </Box>
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <DataTable
             columns={appointmentColumns}
@@ -1239,6 +1430,7 @@ const Appointments = ({ userData }) => {
             defaultOrderBy="date"
             defaultOrder="desc"
             renderMobileCard={renderAppointmentCard}
+            onRowClick={openTreatmentNoteDialog}
           />
         </Box>
       </CardContent>
@@ -1748,6 +1940,59 @@ const Appointments = ({ userData }) => {
           </Button>
         </DialogActions>
       </Dialog>
+      <Dialog open={noteDialog.open} onClose={closeNoteDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Treatment notes</DialogTitle>
+        <DialogContent dividers sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {noteDialog.appointment && (
+            <Box>
+              <Typography variant="subtitle2" fontWeight={600}>
+                {buildPatientLabel(noteDialog.appointment)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {(noteDialog.appointment.date && !Number.isNaN(new Date(noteDialog.appointment.date).getTime()))
+                  ? new Date(noteDialog.appointment.date).toLocaleString()
+                  : 'Date TBC'}
+                {' · '}
+                {getTherapistInfo(noteDialog.appointment).name || 'Unassigned therapist'}
+              </Typography>
+            </Box>
+          )}
+          <TextField
+            label="Treatment notes"
+            multiline
+            minRows={4}
+            value={noteDialog.value}
+            onChange={(event) => {
+              if (!canEditTreatmentNotes) {
+                return;
+              }
+              const { value } = event.target;
+              setNoteDialog((prev) => ({ ...prev, value }));
+            }}
+            fullWidth
+            InputProps={{ readOnly: !canEditTreatmentNotes }}
+            placeholder="Add treatment notes"
+            helperText={
+              canEditTreatmentNotes ? 'Notes are shared with the patient record.' : 'View-only access.'
+            }
+          />
+          {noteDialog.error && (
+            <Alert severity="error">
+              {noteDialog.error}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeNoteDialog} disabled={noteDialog.saving} sx={{ color: '#fff' }}>
+            Close
+          </Button>
+          {canEditTreatmentNotes && (
+            <Button onClick={handleSaveTreatmentNotes} variant="contained" disabled={noteDialog.saving}>
+              {noteDialog.saving ? 'Saving...' : 'Save Notes'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
       <InvoiceBuilderDialog
         open={manualInvoiceDialog.open}
         onClose={closeManualInvoiceDialog}
@@ -1777,3 +2022,4 @@ const Appointments = ({ userData }) => {
 };
 
 export default Appointments;
+

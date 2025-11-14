@@ -271,6 +271,7 @@ const DataTable = ({
   defaultOrderBy,
   defaultOrder = 'asc',
   renderMobileCard,
+  onRowClick,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -596,8 +597,25 @@ const DataTable = ({
             ) : (
               sortedRows.map((row, index) => {
                 const rowId = getRowId(row, index);
+                const handleRowKeyDown = (event) => {
+                  if (!onRowClick) {
+                    return;
+                  }
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onRowClick(row, index);
+                  }
+                };
                 return (
-                  <TableRow hover key={rowId}>
+                  <TableRow
+                    hover
+                    key={rowId}
+                    onClick={onRowClick ? () => onRowClick(row, index) : undefined}
+                    onKeyDown={handleRowKeyDown}
+                    role={onRowClick ? 'button' : undefined}
+                    tabIndex={onRowClick ? 0 : undefined}
+                    sx={{ cursor: onRowClick ? 'pointer' : 'default' }}
+                  >
                     {columns.map((column) => {
                       const value = defaultGetValue(row, column);
                       return (
