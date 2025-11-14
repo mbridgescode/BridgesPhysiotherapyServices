@@ -97,8 +97,6 @@ const getTherapistInfo = (appointment, lookup = {}) => {
     || therapistRecord?.username
     || appointment.therapistUsername
   ) || '';
-    || appointment.therapistUsername
-  ) || '';
   const employeeId = appointment.employeeID ?? therapistRecord?.employeeID ?? null;
 
   let resolvedName = name;
