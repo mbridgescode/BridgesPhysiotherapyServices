@@ -1,5 +1,10 @@
 // src/hooks/useTherapists.js
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import apiClient from '../utils/apiClient';
 
 const mapTherapists = (items) =>
@@ -20,36 +25,79 @@ const mapTherapists = (items) =>
     })
     .filter((therapist) => therapist.id);
 
-export const useTherapists = () => {
-  const [therapists, setTherapists] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+let cachedTherapists = null;
+let cachedError = null;
+let ongoingFetch = null;
+const subscribers = new Set();
 
-  const fetchTherapists = useCallback(async () => {
-    setLoading(true);
+const notifySubscribers = () => {
+  const snapshot = {
+    therapists: cachedTherapists || [],
+    error: cachedError,
+  };
+  subscribers.forEach((listener) => {
+    try {
+      listener(snapshot);
+    } catch (error) {
+      console.error('useTherapists subscriber error', error);
+    }
+  });
+};
+
+const fetchTherapistsShared = async (force = false) => {
+  if (ongoingFetch && !force) {
+    return ongoingFetch;
+  }
+  ongoingFetch = (async () => {
     try {
       const response = await apiClient.get('/api/users/providers');
-      setTherapists(mapTherapists(response.data?.therapists));
-      setError(null);
+      cachedTherapists = mapTherapists(response.data?.therapists);
+      cachedError = null;
     } catch (err) {
       console.error('Failed to load therapists', err);
-      setError('Unable to load therapists');
-      setTherapists([]);
+      cachedTherapists = [];
+      cachedError = 'Unable to load therapists';
     } finally {
-      setLoading(false);
+      notifySubscribers();
+      ongoingFetch = null;
     }
-  }, []);
+  })();
+  return ongoingFetch;
+};
+
+export const useTherapists = () => {
+  const [therapists, setTherapists] = useState(cachedTherapists || []);
+  const [loading, setLoading] = useState(!cachedTherapists);
+  const [error, setError] = useState(cachedError);
 
   useEffect(() => {
-    fetchTherapists();
-  }, [fetchTherapists]);
+    const listener = ({ therapists: nextTherapists, error: nextError }) => {
+      setTherapists(nextTherapists || []);
+      setError(nextError);
+      setLoading(false);
+    };
+    subscribers.add(listener);
+    if (cachedTherapists !== null) {
+      listener({ therapists: cachedTherapists, error: cachedError });
+    } else {
+      fetchTherapistsShared();
+    }
+    return () => {
+      subscribers.delete(listener);
+    };
+  }, []);
+
+  const refreshTherapists = useCallback(async () => {
+    setLoading(true);
+    await fetchTherapistsShared(true);
+  }, []);
 
   return useMemo(() => ({
     therapists,
     loading,
     error,
-    refreshTherapists: fetchTherapists,
-  }), [therapists, loading, error, fetchTherapists]);
+    refreshTherapists,
+  }), [therapists, loading, error, refreshTherapists]);
 };
 
 export default useTherapists;

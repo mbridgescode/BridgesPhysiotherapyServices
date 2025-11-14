@@ -50,66 +50,63 @@ const Home = ({ userData }) => {
   const [metrics, setMetrics] = useState(null);
   const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
-  const [providers, setProviders] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState(null);
-  const [providersLoading, setProvidersLoading] = useState(false);
   const [agendaView, setAgendaView] = useState('today');
 
   const isAdminOrReception = ['admin', 'receptionist'].includes(userData?.role);
   const canFetchMetrics = userData?.role === 'admin';
   const canViewFinancialMetrics = userData?.role === 'admin';
+  const {
+    therapists,
+    loading: therapistsLoading,
+  } = useTherapists();
 
-  const fetchProviders = useCallback(async () => {
+  const selfProviderOption = useMemo(() => {
+    if (!userData) {
+      return null;
+    }
+    return {
+      value: userData.id || 'me',
+      label: `${userData.name || userData.username || 'My agenda'}`,
+      employeeID: userData.employeeID ?? null,
+    };
+  }, [userData]);
+
+  const adminProviderOptions = useMemo(() => {
     if (!isAdminOrReception) {
-      const fallback = {
-        value: userData?.id || 'me',
-        label: `${userData?.name || userData?.username || 'My agenda'}`,
-        employeeID: userData?.employeeID ?? null,
-      };
-      setProviders([fallback]);
-      setSelectedProvider(fallback);
-      return;
+      return [];
     }
-    setProvidersLoading(true);
-    try {
-      const response = await apiClient.get('/api/users/providers');
-      const therapistOptions = (response.data?.therapists || [])
-        .filter((therapist) => therapist.employeeID !== null && therapist.employeeID !== undefined)
-        .map((therapist) => ({
-          value: therapist.id || therapist.employeeID || therapist.name,
-          label: therapist.employeeID
-            ? `${therapist.name} (#${therapist.employeeID})`
-            : therapist.name,
-          employeeID: therapist.employeeID,
-        }));
-      const options = [
-        { value: 'all', label: 'All clinicians', employeeID: null },
-        ...therapistOptions,
-      ];
-      setProviders(options);
-      setSelectedProvider((prev) => {
-        if (prev && options.some((option) => option.value === prev.value)) {
-          return prev;
-        }
-        return options[0] || null;
-      });
-    } catch (error) {
-      console.error('Failed to load provider list', error);
-      const fallback = {
-        value: 'all',
-        label: 'All clinicians',
-        employeeID: null,
-      };
-      setProviders([fallback]);
-      setSelectedProvider(fallback);
-    } finally {
-      setProvidersLoading(false);
-    }
-  }, [isAdminOrReception, userData?.employeeID, userData?.id, userData?.name, userData?.username]);
+    return (therapists || [])
+      .filter((therapist) => therapist.employeeID !== null && therapist.employeeID !== undefined)
+      .map((therapist) => ({
+        value: therapist.id || therapist.employeeID || therapist.name,
+        label: therapist.employeeID
+          ? `${therapist.name || therapist.username || 'Therapist'} (#${therapist.employeeID})`
+          : therapist.name || therapist.username || 'Therapist',
+        employeeID: therapist.employeeID,
+      }));
+  }, [isAdminOrReception, therapists]);
 
   useEffect(() => {
-    fetchProviders();
-  }, [fetchProviders]);
+    if (isAdminOrReception) {
+      if (!adminProviderOptions.length) {
+        return;
+      }
+      setSelectedProvider((prev) => {
+        if (prev && adminProviderOptions.some((option) => option.value === prev.value)) {
+          return prev;
+        }
+        return adminProviderOptions[0];
+      });
+    } else if (selfProviderOption) {
+      setSelectedProvider((prev) => {
+        if (prev && prev.value === selfProviderOption.value) {
+          return prev;
+        }
+        return selfProviderOption;
+      });
+    }
+  }, [isAdminOrReception, adminProviderOptions, selfProviderOption]);
 
   const fetchAppointments = useCallback(async () => {
     if (!selectedProvider && !userData?.employeeID) {
@@ -317,13 +314,13 @@ const Home = ({ userData }) => {
               label="Clinician"
               value={selectedProvider?.value || ''}
               onChange={(event) => {
-                const match = providers.find((option) => option.value === event.target.value);
+                const match = adminProviderOptions.find((option) => option.value === event.target.value);
                 setSelectedProvider(match || null);
               }}
               sx={{ minWidth: 220 }}
-              disabled={providersLoading}
+              disabled={therapistsLoading}
             >
-              {providers.map((option) => (
+              {adminProviderOptions.map((option) => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
                 </MenuItem>
