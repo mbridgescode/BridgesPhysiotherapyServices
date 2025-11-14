@@ -216,6 +216,7 @@ const importPastDataRows = async ({
   rows = [],
   actorId,
   sourceLabel = 'manual-import',
+  generatePdf = false,
 }) => {
   const normalizedRows = rows.map((row, index) => normalizeRow(row, index));
   const summary = {
@@ -392,38 +393,45 @@ const importPastDataRows = async ({
 
       summary.invoicesCreated += 1;
 
-      const invoiceForPdf = await (async () => {
-        const plainInvoice = invoice.toObject();
-        return {
-          ...plainInvoice,
-          patient_name: `${patient.first_name || ''} ${patient.surname || ''}`.trim()
-            || patient.preferred_name
-            || `Patient ${patient.patient_id}`,
-          patient_email: patient.email,
-          patient_phone: patient.phone,
-          billing_contact_name: billingContact.name,
-          billing_contact_email: billingContact.email,
-          billing_contact_phone: billingContact.phone,
-          client_id: patient.patient_id,
-        };
-      })();
+      if (generatePdf) {
+        const invoiceForPdf = await (async () => {
+          const plainInvoice = invoice.toObject();
+          return {
+            ...plainInvoice,
+            patient_name: `${patient.first_name || ''} ${patient.surname || ''}`.trim()
+              || patient.preferred_name
+              || `Patient ${patient.patient_id}`,
+            patient_email: patient.email,
+            patient_phone: patient.phone,
+            billing_contact_name: billingContact.name,
+            billing_contact_email: billingContact.email,
+            billing_contact_phone: billingContact.phone,
+            client_id: patient.patient_id,
+          };
+        })();
 
-      try {
-        const pdfResult = await generateInvoicePdf({
-          invoice: invoiceForPdf,
-          clinicSettings,
-        });
-        if (pdfResult?.pdfBuffer) {
-          invoice.pdf_generated_at = new Date();
-          invoice.pdf_path = pdfResult.pdfPath || null;
-          invoice.pdf_url = `/api/invoices/${invoice.invoice_number}/pdf`;
-          invoice.html_snapshot = pdfResult.html;
+        try {
+          const pdfResult = await generateInvoicePdf({
+            invoice: invoiceForPdf,
+            clinicSettings,
+          });
+          if (pdfResult?.pdfBuffer) {
+            invoice.pdf_generated_at = new Date();
+            invoice.pdf_path = pdfResult.pdfPath || null;
+            invoice.pdf_url = `/api/invoices/${invoice.invoice_number}/pdf`;
+            invoice.html_snapshot = pdfResult.html;
+          }
+        } catch (pdfError) {
+          console.warn('[importPastData] Failed to generate PDF', {
+            invoice: invoice.invoice_number,
+            error: pdfError?.message,
+          });
         }
-      } catch (pdfError) {
-        console.warn('[importPastData] Failed to generate PDF', {
-          invoice: invoice.invoice_number,
-          error: pdfError?.message,
-        });
+      } else {
+        invoice.pdf_generated_at = null;
+        invoice.pdf_path = null;
+        invoice.pdf_url = `/api/invoices/${invoice.invoice_number}/pdf`;
+        invoice.html_snapshot = null;
       }
 
       if (row.payment > 0) {
