@@ -9,7 +9,7 @@ const router = express.Router();
 router.get(
   '/dashboard',
   authenticate,
-  authorize('admin', 'therapist', 'receptionist'),
+  authorize('admin'),
   async (req, res, next) => {
     try {
       const now = new Date();

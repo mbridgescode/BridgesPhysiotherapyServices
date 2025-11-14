@@ -114,13 +114,13 @@ const Sidebar = ({
       label: 'Reports',
       icon: <BarChartIcon />,
       path: '/dashboard/reports',
-      roles: ['admin', 'therapist'],
+      roles: ['admin'],
     },
     {
       label: 'Profit & Loss',
       icon: <ProfitLossIcon />,
       path: '/dashboard/profit-loss',
-      roles: ['admin', 'receptionist', 'therapist'],
+      roles: ['admin'],
     },
     {
       label: 'Users',

@@ -410,7 +410,7 @@ router.get(
 router.post(
   '/',
   authenticate,
-  authorize('admin', 'receptionist'),
+  authorize('admin', 'therapist', 'receptionist'),
   async (req, res, next) => {
     try {
       const {

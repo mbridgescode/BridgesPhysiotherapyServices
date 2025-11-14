@@ -734,7 +734,7 @@ const Appointments = ({ userData }) => {
     },
   ];
 
-  const canManageAppointments = ['admin', 'receptionist'].includes(userData?.role);
+  const canManageAppointments = ['admin', 'therapist', 'receptionist'].includes(userData?.role);
   const canUpdateOutcome = ['admin', 'therapist'].includes(userData?.role);
 
   const actionButtonSx = {

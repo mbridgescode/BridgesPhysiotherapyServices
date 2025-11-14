@@ -9,7 +9,7 @@ const { buildPatientScopeQuery } = require('../utils/accessControl');
 
 const router = express.Router();
 
-const allowedRoles = ['admin', 'receptionist', 'therapist'];
+const allowedRoles = ['admin'];
 
 const parseDateRange = (start, end) => {
   const now = new Date();
