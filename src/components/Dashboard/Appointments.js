@@ -81,6 +81,8 @@ const COMPLETION_OUTCOME_OPTIONS = [
   { value: 'other', label: 'Other (add note)' },
 ];
 
+const COMPLETED_APPOINTMENT_STATUSES = ['completed', 'completed_manual'];
+
 const extractDateParts = (value) => {
   if (!value) {
     return { date: '', time: '' };
@@ -183,6 +185,11 @@ const Appointments = ({ userData }) => {
     submitError: '',
     submitting: false,
   });
+  const [mobileShowAllAppointments, setMobileShowAllAppointments] = useState(!isMobile);
+
+  useEffect(() => {
+    setMobileShowAllAppointments(!isMobile);
+  }, [isMobile]);
 
   useEffect(() => {
     if (!userData) {
@@ -578,15 +585,24 @@ const Appointments = ({ userData }) => {
       return [];
     }
     const normalizedSearch = searchTerm.trim().toLowerCase();
-    if (!normalizedSearch) {
-      return appointments;
+    let base = appointments;
+    if (normalizedSearch) {
+      base = appointments.filter((appointment) => {
+        const name = `${appointment.first_name || ''} ${appointment.surname || ''}`.toLowerCase().trim();
+        const treatment = (appointment.treatment_description || '').toLowerCase();
+        return name.includes(normalizedSearch) || treatment.includes(normalizedSearch);
+      });
     }
-    return appointments.filter((appointment) => {
-      const name = `${appointment.first_name || ''} ${appointment.surname || ''}`.toLowerCase().trim();
-      const treatment = (appointment.treatment_description || '').toLowerCase();
-      return name.includes(normalizedSearch) || treatment.includes(normalizedSearch);
-    });
-  }, [appointments, searchTerm]);
+    if (isMobile && !mobileShowAllAppointments) {
+      base = base.filter((appointment) => {
+        const normalizedStatus = String(
+          appointment.completion_status || appointment.status || '',
+        ).toLowerCase();
+        return !COMPLETED_APPOINTMENT_STATUSES.includes(normalizedStatus);
+      });
+    }
+    return base;
+  }, [appointments, searchTerm, isMobile, mobileShowAllAppointments]);
 
   const appointmentStatusOptions = useMemo(
     () =>
@@ -1199,6 +1215,19 @@ const Appointments = ({ userData }) => {
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search by patient name or treatment"
         />
+        {isMobile && (
+          <FormControlLabel
+            control={(
+              <Checkbox
+                size="small"
+                checked={mobileShowAllAppointments}
+                onChange={(event) => setMobileShowAllAppointments(event.target.checked)}
+              />
+            )}
+            label="Show all appointments"
+            sx={{ alignSelf: 'flex-start', mt: -1, mb: 1 }}
+          />
+        )}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <DataTable
             columns={appointmentColumns}
