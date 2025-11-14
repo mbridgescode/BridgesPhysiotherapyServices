@@ -56,7 +56,8 @@ const Home = ({ userData }) => {
   const [agendaView, setAgendaView] = useState('today');
 
   const isAdminOrReception = ['admin', 'receptionist'].includes(userData?.role);
-  const showMetrics = userData?.role === 'admin';
+  const canFetchMetrics = userData?.role === 'admin';
+  const canViewFinancialMetrics = userData?.role === 'admin';
 
   const fetchProviders = useCallback(async () => {
     if (!isAdminOrReception) {
@@ -147,7 +148,7 @@ const Home = ({ userData }) => {
   }, [fetchAppointments, selectedProvider, userData?.employeeID]);
 
   useEffect(() => {
-    if (!showMetrics) {
+    if (!canFetchMetrics) {
       setLoadingMetrics(false);
       return;
     }
@@ -161,7 +162,7 @@ const Home = ({ userData }) => {
       }
     };
     fetchMetrics();
-  }, [showMetrics]);
+  }, [canFetchMetrics]);
 
   const todaysAppointments = useMemo(() => {
     const today = new Date().toDateString();
@@ -175,23 +176,30 @@ const Home = ({ userData }) => {
       label: "Today's Appointments",
       value: todaysAppointments.length,
       helper: 'scheduled',
+      sensitive: false,
     },
     {
       label: 'This Month Revenue',
       value: `GBP ${Number(metrics?.paymentsProcessed || 0).toFixed(2)}`,
       helper: 'processed',
+      sensitive: true,
     },
     {
       label: 'Outstanding Balance',
       value: `GBP ${Number(metrics?.outstanding?.totalBalance || 0).toFixed(2)}`,
       helper: 'awaiting payment',
+      sensitive: true,
     },
     {
       label: 'Cancelled This Period',
       value: metrics?.appointments?.cancelled || 0,
       helper: 'appointments',
+      sensitive: false,
     },
   ];
+  const visibleMetricCards = metricCards.filter(
+    (card) => canViewFinancialMetrics || !card.sensitive,
+  );
 
   const agendaAppointments = useMemo(() => {
     const now = new Date();
@@ -240,14 +248,14 @@ const Home = ({ userData }) => {
 
   return (
     <Stack spacing={4} sx={{ width: '100%', py: 2 }}>
-      {showMetrics && (
+      {visibleMetricCards.length > 0 && (
         <Grid container spacing={3}>
           {loadingMetrics ? (
             <Grid item>
               <CircularProgress size={24} />
             </Grid>
           ) : (
-            metricCards.map((card) => (
+            visibleMetricCards.map((card) => (
               <Grid item xs={12} sm={6} md={3} key={card.label}>
                 <Card
                   sx={{

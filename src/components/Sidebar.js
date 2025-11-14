@@ -233,7 +233,12 @@ const Sidebar = ({
             .filter((item) => !item.roles || item.roles.includes(role))
             .map((item) => {
               const slug = item.label.toLowerCase().replace(/\s+/g, '-');
-              const isActive = location.pathname.startsWith(item.path);
+              const isActive = (() => {
+                if (item.path === '/dashboard') {
+                  return location.pathname === '/dashboard';
+                }
+                return location.pathname.startsWith(item.path);
+              })();
               const button = (
                 <ListItemButton
                   key={item.label}
