@@ -58,6 +58,26 @@ const buildFooterLines = (branding = {}) => {
   return lines.length ? lines : ['Bridges Physiotherapy Services', '07950 463134 | megan@bridgesphysiotherapy.co.uk'];
 };
 
+const buildAppointmentMessage = (appointments = []) => {
+  const hasInitialAssessment = appointments.some(
+    (appointment) => /initial/i.test(appointment?.treatment_description || ''),
+  );
+
+  if (hasInitialAssessment) {
+    const text = 'For your initial assessment, it can be really helpful if you have any medical information available—such as clinic letters, discharge summaries, doctor’s notes, or a list of your current medications. If these aren’t available, please don’t worry. As we work within the community, occasional delays can happen. If your therapist is running more than 15 minutes behind, they will contact you to let you know.';
+    return {
+      html: `<p style="margin:0 0 18px;">${text}</p>`,
+      text,
+    };
+  }
+
+  const text = 'We look forward to your upcoming appointment. As we work within the community, occasional delays can happen. If your therapist is running more than 15 minutes behind, they will contact you to let you know.';
+  return {
+    html: `<p style="margin:0 0 18px;">${text}</p>`,
+    text,
+  };
+};
+
 const buildComplianceBlockHtml = () => `
   <div style="margin-top:24px;padding:14px 18px;background:rgba(15,23,42,0.04);border-radius:12px;">
     <strong style="display:block;margin-bottom:6px;color:#0f172a;">Helpful links</strong>
@@ -108,13 +128,22 @@ const buildAppointmentsTable = (appointments = [], timeZone) => {
   </table>`;
 };
 
-const buildPlainText = ({ patientName, appointments = [], clinicLines = [], extraNote }) => {
+const buildPlainText = ({
+  patientName,
+  appointments = [],
+  clinicLines = [],
+  extraNote,
+  appointmentMessage,
+}) => {
   const lines = [
     `Hello ${patientName || 'there'},`,
     '',
     'Your appointment has been booked:',
     '',
   ];
+  if (appointmentMessage) {
+    lines.push(appointmentMessage, '');
+  }
   appointments.forEach((appointment, index) => {
     lines.push(
       `${index + 1}. ${formatDateTime(appointment.date)} - ${appointment.treatment_description || 'Treatment'} (${[
@@ -145,13 +174,14 @@ const buildBookingConfirmationEmail = ({
   const branding = clinicSettings?.branding || {};
   const timeZone = branding.timezone || 'Europe/London';
   const clinicLines = buildFooterLines(branding);
+  const appointmentMessage = buildAppointmentMessage(appointments);
   const intro = `Hi ${patientName || 'there'}, your appointment${appointments.length > 1 ? 's have' : ' has'} been secured.`;
   const preview = `${appointments.length > 1 ? 'Appointments confirmed' : 'Appointment confirmed'} for ${formatDateShort(
     appointments[0]?.date,
     timeZone,
   )}`;
   const content = `
-    <p style="margin:0 0 18px;">We look forward to seeing you in clinic. Please arrive a few minutes early to get settled, and bring any recent medical information that might help your therapist.</p>
+    ${appointmentMessage.html}
     ${buildAppointmentsTable(appointments, timeZone)}
     ${
       additionalNote
@@ -178,6 +208,7 @@ const buildBookingConfirmationEmail = ({
     appointments,
     clinicLines,
     extraNote: additionalNote,
+    appointmentMessage: appointmentMessage.text,
   });
 
   const subject = `Booking confirmation - ${formatDateShort(appointments[0]?.date, timeZone)}`;
