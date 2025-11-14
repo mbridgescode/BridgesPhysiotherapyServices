@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -24,6 +25,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  LinearProgress,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import EditIcon from '@mui/icons-material/Edit';
@@ -97,6 +99,11 @@ const Settings = () => {
   });
   const [templateDialogError, setTemplateDialogError] = useState('');
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importingData, setImportingData] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importSummary, setImportSummary] = useState(null);
+  const fileInputRef = useRef(null);
 
   const isAdmin = userData?.role === 'admin';
   const canManageTemplates = ['admin', 'therapist'].includes(userData?.role);
@@ -508,6 +515,45 @@ const Settings = () => {
     const { value } = event.target;
     setRequestForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  const handleImportFileChange = useCallback((event) => {
+    const file = event.target?.files?.[0] || null;
+    setImportFile(file);
+    setImportSummary(null);
+    setImportError('');
+  }, []);
+
+  const handleClearImport = useCallback(() => {
+    setImportFile(null);
+    setImportSummary(null);
+    setImportError('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
+  const handleRunDataImport = useCallback(async () => {
+    if (!importFile) {
+      setImportError('Select a spreadsheet before importing.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', importFile);
+    setImportingData(true);
+    setImportError('');
+    try {
+      const response = await apiClient.post('/api/imports/past-data', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportSummary(response.data?.summary || null);
+    } catch (err) {
+      console.error('Failed to import legacy data', err);
+      const message = err?.response?.data?.message || err?.message || 'Failed to import legacy data.';
+      setImportError(message);
+    } finally {
+      setImportingData(false);
+    }
+  }, [importFile]);
 
   const handleCreateDataRequest = async (event) => {
     event.preventDefault();
@@ -1204,6 +1250,89 @@ const handleSave = async () => {
             maxHeight={320}
             emptyMessage="No archived records are currently eligible for anonymisation."
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h5" gutterBottom>
+            Legacy Data Import
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Upload a spreadsheet (*.xlsx) with the columns&nbsp;
+            <strong>Date, Patient Name, Appointment Type, Invoice Amount, Discount, Payment, Payment Type</strong>.
+            Each row will create a completed appointment, invoice, and optional payment for an existing patient.
+          </Typography>
+          <Box mt={2} display="flex" flexDirection="column" gap={2}>
+            <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
+              <Button component="label" variant="outlined" disabled={importingData}>
+                {importFile ? 'Change Spreadsheet' : 'Choose Spreadsheet'}
+                <input
+                  type="file"
+                  accept=".xlsx"
+                  hidden
+                  ref={fileInputRef}
+                  onChange={handleImportFileChange}
+                />
+              </Button>
+              {importFile && (
+                <Typography variant="body2" color="text.secondary">
+                  Selected: {importFile.name}
+                </Typography>
+              )}
+              {importFile && (
+                <Button onClick={handleClearImport} disabled={importingData} size="small">
+                  Clear
+                </Button>
+              )}
+            </Box>
+            <Box display="flex" gap={2}>
+              <Button
+                variant="contained"
+                onClick={handleRunDataImport}
+                disabled={!importFile || importingData}
+              >
+                {importingData ? 'Importing...' : 'Import Data'}
+              </Button>
+            </Box>
+            {importingData && <LinearProgress />}
+          </Box>
+          {importError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {importError}
+            </Alert>
+          )}
+          {importSummary && (
+            <Box mt={2} display="flex" flexDirection="column" gap={1}>
+              <Alert severity="success">
+                Created {importSummary.invoicesCreated} invoices, {importSummary.appointmentsCreated} appointments, and{' '}
+                {importSummary.paymentsCreated} payments out of {importSummary.processed} rows.
+              </Alert>
+              <Typography variant="body2" color="text.secondary">
+                Skipped {importSummary.skipped?.length || 0} rows · Errors {importSummary.errors?.length || 0}
+              </Typography>
+              {importSummary.skipped?.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2">First skipped rows</Typography>
+                  {importSummary.skipped.slice(0, 5).map((item) => (
+                    <Typography key={`${item.rowNumber}-${item.reason}`} variant="body2" color="text.secondary">
+                      Row {item.rowNumber}: {item.reason}
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+              {importSummary.errors?.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2">Errors</Typography>
+                  {importSummary.errors.slice(0, 3).map((item) => (
+                    <Typography key={`${item.rowNumber}-${item.reason}-error`} variant="body2" color="error">
+                      Row {item.rowNumber}: {item.reason}
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
         </CardContent>
       </Card>
       {renderTwoFactorCard()}

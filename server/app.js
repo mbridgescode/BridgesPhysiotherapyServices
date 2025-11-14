@@ -17,6 +17,7 @@ const servicesRouter = require('../src/routes/services');
 const dataRequestsRouter = require('../src/routes/dataRequests');
 const profitLossRouter = require('../src/routes/profitLoss');
 const treatmentNoteTemplatesRouter = require('../src/routes/treatmentNoteTemplates');
+const importsRouter = require('../src/routes/imports');
 const {
   host,
   corsOrigin,
@@ -97,6 +98,7 @@ app.use('/api/services', servicesRouter);
 app.use('/api/data-requests', dataRequestsRouter);
 app.use('/api/profit-loss', profitLossRouter);
 app.use('/api/treatment-note-templates', treatmentNoteTemplatesRouter);
+app.use('/api/imports', importsRouter);
 
 app.get('/healthz', (req, res) => {
   res.json({ status: 'ok', environment: nodeEnv, timestamp: new Date().toISOString() });
