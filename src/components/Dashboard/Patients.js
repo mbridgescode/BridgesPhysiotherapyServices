@@ -79,6 +79,8 @@ const STATUS_OPTIONS = [
   { value: 'archived', label: 'Archived' },
 ];
 
+const PAGE_SIZE = 50;
+
 const BILLING_MODE_OPTIONS = [
   { value: 'individual', label: 'Individual billing' },
   { value: 'monthly', label: 'Monthly billing' },
@@ -119,6 +121,7 @@ const createEmptyFormState = () => ({
 const Patients = ({ userData }) => {
   const classes = useStyles();
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -133,6 +136,9 @@ const Patients = ({ userData }) => {
   const [patientScope, setPatientScope] = useState(userData?.role === 'therapist' ? 'mine' : 'all');
   const [emailToggleBusy, setEmailToggleBusy] = useState({});
   const [showArchived, setShowArchived] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [fetchingMore, setFetchingMore] = useState(false);
   const navigate = useNavigate();
   const roleRef = useRef(userData?.role);
   const therapistOptions = useMemo(() => therapists, [therapists]);
@@ -161,6 +167,13 @@ const Patients = ({ userData }) => {
     [therapistOptions, formState.primaryTherapistId],
   );
 
+  const handleLoadMore = useCallback(() => {
+    if (!hasMore || fetchingMore || loading) {
+      return;
+    }
+    setPage((prev) => prev + 1);
+  }, [fetchingMore, hasMore, loading]);
+
   useEffect(() => {
     const unsubscribe = subscribeToAuthToken(() => {
       setToken(getAuthToken());
@@ -181,6 +194,19 @@ const Patients = ({ userData }) => {
   }, []);
 
   useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchTerm.trim());
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPatients([]);
+    setPage(0);
+    setHasMore(true);
+  }, [patientScope, searchQuery, showArchived, token]);
+
+  useEffect(() => {
     const previousRole = roleRef.current;
     const currentRole = userData?.role;
     if (currentRole === 'therapist' && previousRole !== 'therapist') {
@@ -196,31 +222,71 @@ const Patients = ({ userData }) => {
 
     const fetchPatients = async () => {
       if (!token) {
-        setPatients([]);
-        setLoading(false);
-        setError(null);
+        if (isMounted) {
+          setPatients([]);
+          setHasMore(false);
+          setLoading(false);
+          setFetchingMore(false);
+          setError(null);
+        }
         return;
       }
 
-      setLoading(true);
+      const isInitialPage = page === 0;
+      if (isInitialPage) {
+        setLoading(true);
+      } else {
+        setFetchingMore(true);
+      }
+
       try {
-        const params = {};
+        const params = {
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        };
         if (patientScope === 'all') {
           params.view = 'all';
         }
-        const response = await apiClient.get('/api/patients', { params });
-        if (isMounted) {
-          setPatients(response.data.patients || []);
-          setError(null);
+        if (showArchived) {
+          params.status = 'archived';
+        } else {
+          params.status = 'active,inactive';
         }
+        if (searchQuery) {
+          params.search = searchQuery;
+        }
+
+        const response = await apiClient.get('/api/patients', { params });
+        if (!isMounted) {
+          return;
+        }
+        const incoming = response.data.patients || [];
+        let snapshot = [];
+        setPatients((prev) => {
+          snapshot = isInitialPage ? incoming : [...prev, ...incoming];
+          return snapshot;
+        });
+        const total = response.data.total;
+        if (typeof total === 'number') {
+          setHasMore(snapshot.length < total);
+        } else {
+          setHasMore(incoming.length === PAGE_SIZE);
+        }
+        setError(null);
       } catch (err) {
         console.error('Error fetching patients:', err);
         if (isMounted) {
           setError('Failed to load patients');
+          if (page === 0) {
+            setPatients([]);
+          }
         }
       } finally {
         if (isMounted) {
-          setLoading(false);
+          if (page === 0) {
+            setLoading(false);
+          }
+          setFetchingMore(false);
         }
       }
     };
@@ -230,7 +296,7 @@ const Patients = ({ userData }) => {
     return () => {
       isMounted = false;
     };
-  }, [token, patientScope]);
+  }, [token, patientScope, searchQuery, showArchived, page]);
 
   useEffect(() => {
     if (!formOpen) {
@@ -288,7 +354,10 @@ const Patients = ({ userData }) => {
           return showArchived ? status === 'archived' : status !== 'archived';
         })
         .filter((patient) => {
-          const searchValue = searchTerm.toLowerCase();
+          const searchValue = searchQuery.toLowerCase();
+          if (!searchValue) {
+            return true;
+          }
           const matchesCore = [
             patient.first_name,
             patient.surname,
@@ -309,7 +378,7 @@ const Patients = ({ userData }) => {
 
           return matchesCore || matchesAppointment;
         }),
-    [patients, searchTerm, formatPatientAddress, showArchived],
+    [patients, searchQuery, formatPatientAddress, showArchived],
   );
 
   const handleViewDetails = useCallback((patientId) => {
@@ -625,6 +694,17 @@ const Patients = ({ userData }) => {
             emptyMessage="No patients match your filters."
           />
         </Box>
+        {hasMore && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={handleLoadMore}
+              disabled={fetchingMore || loading}
+            >
+              {fetchingMore ? 'Loading...' : 'Load more patients'}
+            </Button>
+          </Box>
+        )}
       </CardContent>
 
       <Dialog open={formOpen} onClose={handleCloseForm} maxWidth="sm" fullWidth>

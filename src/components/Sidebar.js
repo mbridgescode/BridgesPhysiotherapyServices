@@ -230,7 +230,15 @@ const Sidebar = ({
         <Divider sx={{ borderColor: 'rgba(148, 163, 184, 0.12)', width: '100%', mx: 'auto' }} />
         <List sx={{ mt: 2, width: '100%' }}>
           {navItems
-            .filter((item) => !item.roles || item.roles.includes(role))
+            .filter((item) => {
+              if (!item.roles) {
+                return true;
+              }
+              if (!role) {
+                return true;
+              }
+              return item.roles.includes(role);
+            })
             .map((item) => {
               const slug = item.label.toLowerCase().replace(/\s+/g, '-');
               const isActive = (() => {

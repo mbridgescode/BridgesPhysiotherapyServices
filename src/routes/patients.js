@@ -50,6 +50,21 @@ const calculateAge = (value, referenceDate = new Date()) => {
 
 const normalizeBillingMode = (value) => (value === 'monthly' ? 'monthly' : 'individual');
 
+const normalizeStatusFilter = (value) => {
+  if (!value) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry).trim()).filter(Boolean);
+  }
+  const stringValue = String(value);
+  if (stringValue.includes(',')) {
+    return stringValue.split(',').map((entry) => entry.trim()).filter(Boolean);
+  }
+  const trimmed = stringValue.trim();
+  return trimmed ? [trimmed] : null;
+};
+
 const toBooleanOrUndefined = (value) => {
   if (value === undefined || value === null || value === '') {
     return undefined;
@@ -133,13 +148,17 @@ router.get(
         status,
         assignedTo,
         limit = 100,
+        offset = 0,
         view,
       } = req.query;
 
       const query = {};
 
-      if (status) {
-        query.status = status;
+      const statusFilter = normalizeStatusFilter(status);
+      if (statusFilter && statusFilter.length > 0) {
+        query.status = statusFilter.length === 1
+          ? statusFilter[0]
+          : { $in: statusFilter };
       }
 
       if (assignedTo) {
@@ -165,10 +184,30 @@ router.get(
         query.$and = [...(query.$and || []), scopeQuery];
       }
 
-      const patientDocs = await Patient.find(query)
-        .limit(Number(limit))
-        .sort({ updatedAt: -1 })
-        .populate('primaryTherapist', 'name username email role employeeID');
+      const parsedLimit = (() => {
+        const numeric = Number(limit);
+        if (Number.isNaN(numeric) || numeric <= 0) {
+          return 100;
+        }
+        return Math.min(Math.max(numeric, 1), 200);
+      })();
+
+      const parsedOffset = (() => {
+        const numeric = Number(offset);
+        if (Number.isNaN(numeric) || numeric < 0) {
+          return 0;
+        }
+        return numeric;
+      })();
+
+      const [patientDocs, totalCount] = await Promise.all([
+        Patient.find(query)
+          .sort({ updatedAt: -1 })
+          .skip(parsedOffset)
+          .limit(parsedLimit)
+          .populate('primaryTherapist', 'name username email role employeeID'),
+        Patient.countDocuments(query),
+      ]);
 
       const patients = patientDocs.map(toPlainObject);
 
@@ -229,6 +268,7 @@ router.get(
       res.json({
         success: true,
         patients: scopedResult,
+        total: totalCount,
       });
     } catch (error) {
       next(error);
