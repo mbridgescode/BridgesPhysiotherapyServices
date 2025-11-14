@@ -208,10 +208,11 @@ const Appointments = ({ userData }) => {
   }, []);
 
   const therapistOptions = useMemo(() => {
-    if (therapists.length) {
-      return therapists;
+    const therapistOnly = therapists.filter((therapist) => therapist.role === 'therapist');
+    if (therapistOnly.length) {
+      return therapistOnly;
     }
-    if (userData) {
+    if (userData?.role === 'therapist') {
       return [{
         id: userData.id || 'current-user',
         name: userData.name || userData.username || 'Current user',
