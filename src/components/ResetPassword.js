@@ -21,6 +21,13 @@ import apiClient from '../utils/apiClient';
 const MIN_PASSWORD_LENGTH = 8;
 
 const ResetPassword = () => {
+  const textFieldSx = {
+    '& .MuiInputBase-input': { color: 'text.primary' },
+    '& .MuiOutlinedInput-root': { backgroundColor: 'rgba(255,255,255,0.95)' },
+    '& .MuiInputLabel-root': { color: 'text.secondary' },
+    '& .MuiInputLabel-root.Mui-focused': { color: 'primary.main' },
+  };
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const presetEmail = useMemo(() => searchParams.get('email') || '', [searchParams]);
@@ -102,6 +109,7 @@ const ResetPassword = () => {
             backgroundColor: 'rgba(255, 255, 255, 0.9)',
             backdropFilter: 'blur(10px)',
             borderRadius: 2,
+            color: 'text.primary',
           }}
         >
           <Avatar sx={{ m: 1, bgcolor: 'secondary.main' }}>
@@ -131,6 +139,7 @@ const ResetPassword = () => {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              sx={textFieldSx}
             />
             <TextField
               margin="normal"
@@ -142,6 +151,7 @@ const ResetPassword = () => {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               helperText="Copy the token from your email link if it did not auto-fill."
+              sx={textFieldSx}
             />
             <TextField
               margin="normal"
@@ -153,6 +163,7 @@ const ResetPassword = () => {
               id="newPassword"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
+              sx={textFieldSx}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
@@ -177,6 +188,7 @@ const ResetPassword = () => {
               id="confirmPassword"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              sx={textFieldSx}
             />
             <Button
               type="submit"

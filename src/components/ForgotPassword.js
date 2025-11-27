@@ -15,6 +15,13 @@ import { Link as RouterLink } from 'react-router-dom';
 import apiClient from '../utils/apiClient';
 
 const ForgotPassword = () => {
+  const textFieldSx = {
+    '& .MuiInputBase-input': { color: 'text.primary' },
+    '& .MuiOutlinedInput-root': { backgroundColor: 'rgba(255,255,255,0.95)' },
+    '& .MuiInputLabel-root': { color: 'text.secondary' },
+    '& .MuiInputLabel-root.Mui-focused': { color: 'primary.main' },
+  };
+
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
@@ -74,6 +81,7 @@ const ForgotPassword = () => {
             backgroundColor: 'rgba(255, 255, 255, 0.9)',
             backdropFilter: 'blur(10px)',
             borderRadius: 2,
+            color: 'text.primary',
           }}
         >
           <Avatar sx={{ m: 1, bgcolor: 'secondary.main' }}>
@@ -104,6 +112,7 @@ const ForgotPassword = () => {
               autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              sx={textFieldSx}
             />
             <Button
               type="submit"
