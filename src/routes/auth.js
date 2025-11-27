@@ -481,10 +481,23 @@ router.post('/forgot-password', async (req, res) => {
     user.passwordResetExpires = new Date(Date.now() + (60 * 60 * 1000)); // 1 hour
     await user.save();
 
-    const requestOrigin = req.headers.origin || '';
-    const hostFallback = req.headers.host ? `https://${req.headers.host}` : '';
-    const resetBase = (process.env.FRONTEND_BASE_URL || requestOrigin || hostFallback || 'http://localhost:3000')
-      .replace(/\/$/, '');
+    const resolveResetBase = () => {
+      const requestOrigin = req.headers.origin || '';
+      const hostFallback = req.headers.host ? `https://${req.headers.host}` : '';
+      const rawBase = process.env.FRONTEND_BASE_URL || requestOrigin || hostFallback || 'http://localhost:3000';
+      try {
+        const url = new URL(rawBase);
+        const trimmedPath = url.pathname.replace(/\/+$/, '');
+        // Avoid duplicating /reset-password when env already includes it
+        const sanitizedPath = trimmedPath.replace(/\/reset-password$/i, '') || '/';
+        url.pathname = sanitizedPath;
+        return url.toString().replace(/\/$/, '');
+      } catch (error) {
+        return rawBase.replace(/\/reset-password\/?$/i, '').replace(/\/$/, '');
+      }
+    };
+
+    const resetBase = resolveResetBase();
     const resetLink = `${resetBase}/reset-password?token=${rawToken}&email=${encodeURIComponent(normalizedEmail)}`;
 
     await sendTransactionalEmail({
