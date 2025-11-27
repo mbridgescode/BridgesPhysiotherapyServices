@@ -15,11 +15,14 @@ import { Link as RouterLink } from 'react-router-dom';
 import apiClient from '../utils/apiClient';
 
 const ForgotPassword = () => {
+  const textColor = '#0f172a';
   const textFieldSx = {
-    '& .MuiInputBase-input': { color: 'text.primary' },
-    '& .MuiOutlinedInput-root': { backgroundColor: 'rgba(255,255,255,0.95)' },
-    '& .MuiInputLabel-root': { color: 'text.secondary' },
-    '& .MuiInputLabel-root.Mui-focused': { color: 'primary.main' },
+    '& .MuiInputBase-input': { color: textColor },
+    '& .MuiOutlinedInput-root': { backgroundColor: 'rgba(255,255,255,0.97)' },
+    '& .MuiInputLabel-root': { color: textColor, opacity: 0.85 },
+    '& .MuiInputLabel-root.Mui-focused': { color: textColor },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(15,23,42,0.25)' },
+    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(15,23,42,0.45)' },
   };
 
   const [email, setEmail] = useState('');
