@@ -496,6 +496,10 @@ router.post('/forgot-password', async (req, res) => {
         || 'http://localhost:3000';
       try {
         const url = new URL(rawBase);
+        // Normalize legacy/typo domain to the live hyphenated Vercel host
+        if (url.hostname === 'bridgesphysiotherapyservices.vercel.app') {
+          url.hostname = 'bridges-physiotherapy-services.vercel.app';
+        }
         const trimmedPath = url.pathname.replace(/\/+$/, '');
         // Avoid duplicating /reset-password when env already includes it
         const sanitizedPath = trimmedPath.replace(/\/reset-password$/i, '') || '/';
