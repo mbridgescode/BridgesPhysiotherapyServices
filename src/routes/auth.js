@@ -484,11 +484,9 @@ router.post('/forgot-password', async (req, res) => {
     const resolveResetBase = () => {
       const requestOrigin = req.headers.origin || '';
       const hostFallback = req.headers.host ? `https://${req.headers.host}` : '';
-      const defaultDeployedBase = 'https://bridges-physiotherapy-services.vercel.app';
       const rawBase = process.env.FRONTEND_BASE_URL
         || requestOrigin
         || hostFallback
-        || defaultDeployedBase
         || 'http://localhost:3000';
       try {
         const url = new URL(rawBase);
