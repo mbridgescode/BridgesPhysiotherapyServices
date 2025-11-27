@@ -481,7 +481,10 @@ router.post('/forgot-password', async (req, res) => {
     user.passwordResetExpires = new Date(Date.now() + (60 * 60 * 1000)); // 1 hour
     await user.save();
 
-    const resetBase = (process.env.FRONTEND_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const requestOrigin = req.headers.origin || '';
+    const hostFallback = req.headers.host ? `https://${req.headers.host}` : '';
+    const resetBase = (process.env.FRONTEND_BASE_URL || requestOrigin || hostFallback || 'http://localhost:3000')
+      .replace(/\/$/, '');
     const resetLink = `${resetBase}/reset-password?token=${rawToken}&email=${encodeURIComponent(normalizedEmail)}`;
 
     await sendTransactionalEmail({
