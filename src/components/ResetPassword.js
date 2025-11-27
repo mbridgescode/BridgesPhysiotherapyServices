@@ -35,6 +35,7 @@ const ResetPassword = () => {
   const [searchParams] = useSearchParams();
   const presetEmail = useMemo(() => searchParams.get('email') || '', [searchParams]);
   const presetToken = useMemo(() => searchParams.get('token') || '', [searchParams]);
+  const hasPresetToken = Boolean(presetToken);
 
   const [email, setEmail] = useState(presetEmail);
   const [token, setToken] = useState(presetToken);
@@ -144,18 +145,22 @@ const ResetPassword = () => {
               onChange={(e) => setEmail(e.target.value)}
               sx={textFieldSx}
             />
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="token"
-              label="Reset token"
-              name="token"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              helperText="Copy the token from your email link if it did not auto-fill."
-              sx={textFieldSx}
-            />
+            {hasPresetToken ? (
+              <input type="hidden" name="token" value={token} />
+            ) : (
+              <TextField
+                margin="normal"
+                required
+                fullWidth
+                id="token"
+                label="Reset token"
+                name="token"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                helperText="Copy the token from your email link if it did not auto-fill."
+                sx={textFieldSx}
+              />
+            )}
             <TextField
               margin="normal"
               required
