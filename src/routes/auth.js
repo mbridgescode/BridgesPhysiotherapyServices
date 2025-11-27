@@ -481,9 +481,8 @@ router.post('/forgot-password', async (req, res) => {
     user.passwordResetExpires = new Date(Date.now() + (60 * 60 * 1000)); // 1 hour
     await user.save();
 
-    const resetLinkBase = process.env.FRONTEND_BASE_URL
-      || 'http://localhost:3000/reset-password';
-    const resetLink = `${resetLinkBase}?token=${rawToken}&email=${encodeURIComponent(normalizedEmail)}`;
+    const resetBase = (process.env.FRONTEND_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const resetLink = `${resetBase}/reset-password?token=${rawToken}&email=${encodeURIComponent(normalizedEmail)}`;
 
     await sendTransactionalEmail({
       to: normalizedEmail,

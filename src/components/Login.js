@@ -12,12 +12,13 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import Typography from '@mui/material/Typography';
 import InputAdornment from '@mui/material/InputAdornment';
 import IconButton from '@mui/material/IconButton';
+import Link from '@mui/material/Link';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import apiClient from '../utils/apiClient';
 import { emitAuthTokenChanged } from '../utils/authEvents';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import '../styles/login.css';
 
 // Create a custom theme for MUI components
@@ -181,6 +182,13 @@ const Login = () => {
               >
                 Sign In
               </Button>
+              <Grid container justifyContent="flex-end">
+                <Grid item>
+                  <Link component={RouterLink} to="/forgot-password" variant="body2">
+                    Forgot password?
+                  </Link>
+                </Grid>
+              </Grid>
             </Box>
           </Paper>
         </Grid>

@@ -619,7 +619,7 @@ router.post(
 router.put(
   '/:invoiceNumber',
   authenticate,
-  authorize('admin', 'receptionist'),
+  authorize('admin', 'receptionist', 'therapist'),
   async (req, res, next) => {
     try {
       const invoice = await Invoice.findOne({ invoice_number: req.params.invoiceNumber });
@@ -628,6 +628,18 @@ router.put(
       }
       const patientDoc = await Patient.findOne({ patient_id: invoice.patient_id });
       const patient = toPlainObject(patientDoc);
+      if (!patient) {
+        return res.status(404).json({ success: false, message: 'Patient not found' });
+      }
+
+      if (req.user.role !== 'admin') {
+        const createdByCurrentUser = invoice.createdBy
+          && invoice.createdBy.toString
+          && invoice.createdBy.toString() === String(req.user.id);
+        if (!userCanAccessPatient(patient, req.user) && !createdByCurrentUser) {
+          return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+      }
 
       const lineItems = req.body.line_items
         ? normalizeLineItems(req.body.line_items)
