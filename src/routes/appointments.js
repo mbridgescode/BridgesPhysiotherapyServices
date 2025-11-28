@@ -33,6 +33,13 @@ const toNumberOrUndefined = (value) => {
   return Number.isNaN(numeric) ? undefined : numeric;
 };
 
+const CANCELLED_STATUSES = [
+  'cancelled',
+  'cancelled_same_day',
+  'cancelled_by_patient',
+  'cancelled_by_therapist',
+];
+
 const applyFilters = (query, { employeeID, status, from, to, includeCancelled }) => {
   if (employeeID !== undefined) {
     const normalizedEmployeeId = Number(employeeID);
@@ -46,7 +53,7 @@ const applyFilters = (query, { employeeID, status, from, to, includeCancelled })
   }
 
   if (!includeCancelled && !status) {
-    query.status = { $nin: ['cancelled'] };
+    query.status = { $nin: CANCELLED_STATUSES };
   }
 
   if (from || to) {
@@ -161,6 +168,8 @@ const AUTO_INVOICE_RULES = {
     multiplier: 0.5,
     description: (appointment) => `${appointment.treatment_description || 'Treatment session'} (same-day cancellation fee)`,
   },
+  cancelled_by_patient: null,
+  cancelled_by_therapist: null,
 };
 
 const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }) => {
@@ -656,7 +665,7 @@ router.put(
         ...req.body,
       };
 
-      if (updatePayload.status === 'cancelled') {
+      if (updatePayload.status && CANCELLED_STATUSES.includes(updatePayload.status)) {
         updatePayload.cancelled_at = new Date();
       }
 
@@ -705,6 +714,8 @@ router.post(
       'cancelled_on_the_day',
       'cancelled_same_day',
       'cancelled_reschedule',
+      'cancelled_by_patient',
+      'cancelled_by_therapist',
       'other',
     ];
     if (!allowedOutcomes.includes(normalizedOutcome)) {
@@ -727,9 +738,11 @@ router.post(
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
+      const noteRequiredOutcomes = ['other', 'cancelled_reschedule', 'cancelled_by_patient', 'cancelled_by_therapist'];
+
       const update = {
         completion_status: effectiveOutcome,
-        completion_note: ['other', 'cancelled_reschedule'].includes(effectiveOutcome) ? note?.trim() : '',
+        completion_note: noteRequiredOutcomes.includes(effectiveOutcome) ? note?.trim() : '',
         updatedBy: req.user.id,
       };
 
@@ -742,7 +755,15 @@ router.post(
         update.cancelled_at = new Date();
       } else if (effectiveOutcome === 'cancelled_reschedule') {
         update.completed = false;
-        update.status = 'cancelled';
+        update.status = 'cancelled_by_patient';
+        update.cancelled_at = new Date();
+      } else if (effectiveOutcome === 'cancelled_by_patient') {
+        update.completed = false;
+        update.status = 'cancelled_by_patient';
+        update.cancelled_at = new Date();
+      } else if (effectiveOutcome === 'cancelled_by_therapist') {
+        update.completed = false;
+        update.status = 'cancelled_by_therapist';
         update.cancelled_at = new Date();
       } else {
         update.completed = false;
@@ -810,6 +831,43 @@ router.post(
   },
 );
 
+router.delete(
+  '/:appointmentId',
+  authenticate,
+  authorize('admin', 'therapist', 'receptionist'),
+  async (req, res, next) => {
+    try {
+      const appointmentId = normalizeAppointmentId(req.params.appointmentId);
+      if (!appointmentId) {
+        return res.status(400).json({ success: false, message: 'Invalid appointment id' });
+      }
+
+      const appointment = await Appointment.findOne({ appointment_id: appointmentId });
+      if (!appointment) {
+        return res.status(404).json({ success: false, message: 'Appointment not found' });
+      }
+
+      if (!userCanManageAppointment(appointment, req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
+      await Appointment.deleteOne({ _id: appointment._id });
+
+      await recordAuditEvent({
+        event: 'appointment.delete',
+        success: true,
+        actorId: req.user.id,
+        actorRole: req.user.role,
+        metadata: { appointment_id: appointmentId.toString() },
+      });
+
+      return res.json({ success: true, appointment: toPlainObject(appointment) });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
+
 router.patch(
   '/:appointmentId/cancel',
   authenticate,
@@ -833,7 +891,10 @@ router.patch(
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
-      appointment.status = 'cancelled';
+      const cancelledBy = (req.body.cancelled_by || '').toLowerCase();
+      const status = cancelledBy === 'therapist' ? 'cancelled_by_therapist' : 'cancelled_by_patient';
+
+      appointment.status = status;
       appointment.cancellation_reason = reason;
       appointment.cancelled_at = new Date();
       appointment.updatedBy = req.user.id;

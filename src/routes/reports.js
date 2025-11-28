@@ -80,6 +80,12 @@ router.get(
         [cur._id || 'unknown']: cur.count,
       }), {});
 
+      const cancelledByPatient = appointmentSummary.cancelled_by_patient || 0;
+      const cancelledByTherapist = appointmentSummary.cancelled_by_therapist || 0;
+      const cancelledSameDay = appointmentSummary.cancelled_same_day || 0;
+      const cancelledLegacy = appointmentSummary.cancelled || 0;
+      const totalCancelled = cancelledByPatient + cancelledByTherapist + cancelledSameDay + cancelledLegacy;
+
       const outstandingSummary = outstandingInvoices.reduce((acc, cur) => ({
         totalBalance: (acc.totalBalance || 0) + cur.balance,
         invoiceCount: (acc.invoiceCount || 0) + cur.count,
@@ -91,7 +97,11 @@ router.get(
           appointments: {
             scheduled: appointmentSummary.scheduled || 0,
             completed: appointmentSummary.completed || 0,
-            cancelled: appointmentSummary.cancelled || 0,
+            cancelled: totalCancelled,
+            cancelled_by_patient: cancelledByPatient,
+            cancelled_by_therapist: cancelledByTherapist,
+            cancelled_same_day: cancelledSameDay,
+            cancelled_legacy: cancelledLegacy,
           },
           paymentsProcessed: payments[0]?.total || 0,
           revenueByMonth,

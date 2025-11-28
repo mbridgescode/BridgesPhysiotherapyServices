@@ -78,7 +78,8 @@ const COMPLETION_OUTCOME_OPTIONS = [
   { value: 'completed', label: 'Completed (auto invoice)' },
   { value: 'completed_manual', label: 'Completed (adjust invoice)' },
   { value: 'cancelled_same_day', label: 'Cancelled on the day (50% fee)' },
-  { value: 'cancelled_reschedule', label: 'Cancelled (delete or reschedule)' },
+  { value: 'cancelled_by_patient', label: 'Cancelled by patient' },
+  { value: 'cancelled_by_therapist', label: 'Cancelled by therapist' },
   { value: 'other', label: 'Other (add note)' },
 ];
 
@@ -184,6 +185,10 @@ const formatStatusLabel = (status) => {
       return 'Cancelled on the day';
     case 'cancelled_reschedule':
       return 'Cancelled (reschedule)';
+    case 'cancelled_by_patient':
+      return 'Cancelled by patient';
+    case 'cancelled_by_therapist':
+      return 'Cancelled by therapist';
     case 'other':
       return 'Other';
     case 'cancelled':
@@ -359,7 +364,7 @@ const Appointments = ({ userData }) => {
           description: service?.treatment_description || service?.description || '',
           price: service?.price,
         }));
-        setTreatmentOptions(options);
+    setTreatmentOptions(options);
       } catch (err) {
         console.error('Failed to load treatment catalogue', err);
       }
@@ -367,14 +372,33 @@ const Appointments = ({ userData }) => {
     loadTreatments();
   }, []);
 
-  const handleCancelAppointment = async (appointmentId) => {
+  const handleDeleteAppointment = useCallback(async (appointmentId) => {
+    if (!appointmentId) {
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Delete this appointment? This cannot be undone.');
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setSubmitError(null);
+
     try {
-      await apiClient.patch(`/api/appointments/${appointmentId}/cancel`, { reason: 'Cancelled via dashboard' });
+      await apiClient.delete(`/api/appointments/${appointmentId}`);
+      setAppointments((prev) =>
+        prev.filter((appointment) => appointment.appointment_id !== appointmentId),
+      );
+      setSubmitSuccess('Appointment deleted');
       refreshAppointments();
     } catch (err) {
-      console.error('Failed to cancel appointment', err);
+      console.error('Failed to delete appointment', err);
+      const message = err?.response?.data?.message || 'Failed to delete appointment';
+      setSubmitError(message);
     }
-  };
+  }, [refreshAppointments, setAppointments]);
 
   const performCompletionUpdate = useCallback(
     async ({ appointmentId, outcome, note = '' }) => {
@@ -1034,14 +1058,13 @@ const Appointments = ({ userData }) => {
       {canManageAppointments && (
         <Button
           size="small"
-          color="warning"
+          color="error"
           variant="contained"
-          onClick={handleActionClick(() => handleCancelAppointment(row.appointment_id))}
-          disabled={row.status === 'cancelled'}
+          onClick={handleActionClick(() => handleDeleteAppointment(row.appointment_id))}
           sx={{ ...actionButtonSx }}
           fullWidth={isMobile}
         >
-          Cancel
+          Delete
         </Button>
       )}
     </Box>

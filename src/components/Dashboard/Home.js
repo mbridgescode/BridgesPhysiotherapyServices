@@ -197,7 +197,11 @@ const Home = ({ userData }) => {
     },
     {
       label: 'Cancelled This Period',
-      value: metrics?.appointments?.cancelled || 0,
+      value:
+        (metrics?.appointments?.cancelled_by_patient || 0)
+        + (metrics?.appointments?.cancelled_by_therapist || 0)
+        + (metrics?.appointments?.cancelled_same_day || 0)
+        + (metrics?.appointments?.cancelled_legacy || metrics?.appointments?.cancelled || 0),
       helper: 'appointments',
       sensitive: false,
     },

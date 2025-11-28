@@ -255,9 +255,25 @@ const Reports = () => {
   const appointmentTotals = useMemo(() => {
     const scheduled = appointments.scheduled ?? 0;
     const completed = appointments.completed ?? 0;
-    const cancelled = appointments.cancelled ?? 0;
-    const total = scheduled + completed + cancelled;
-    return { scheduled, completed, cancelled, total };
+    const cancelledByPatient = appointments.cancelled_by_patient ?? 0;
+    const cancelledByTherapist = appointments.cancelled_by_therapist ?? 0;
+    const cancelledSameDay = appointments.cancelled_same_day ?? 0;
+    const cancelledLegacy = appointments.cancelled_legacy ?? 0;
+    const cancelled = appointments.cancelled ?? (
+      cancelledByPatient + cancelledByTherapist + cancelledSameDay + cancelledLegacy
+    );
+    const totalCancelled = cancelledByPatient + cancelledByTherapist + cancelledSameDay + cancelledLegacy || cancelled;
+    const total = scheduled + completed + totalCancelled;
+    return {
+      scheduled,
+      completed,
+      cancelled: totalCancelled,
+      cancelledByPatient,
+      cancelledByTherapist,
+      cancelledSameDay,
+      cancelledLegacy,
+      total,
+    };
   }, [appointments]);
 
   const revenueSeries = useMemo(() => {
@@ -331,8 +347,15 @@ const Reports = () => {
   const appointmentDonut = useMemo(
     () => ({
       options: {
-        labels: ['Scheduled', 'Completed', 'Cancelled'],
-        colors: ['#94a3b8', '#10b981', '#f97316'],
+        labels: [
+          'Scheduled',
+          'Completed',
+          'Cancelled by patient',
+          'Cancelled by therapist',
+          'Cancelled same day',
+          'Cancelled (legacy)',
+        ],
+        colors: ['#94a3b8', '#10b981', '#f59e0b', '#f97316', '#ef4444', '#c084fc'],
         legend: { position: 'bottom' },
         dataLabels: { enabled: false },
         stroke: { width: 2 },
@@ -340,7 +363,10 @@ const Reports = () => {
       series: [
         appointmentTotals.scheduled,
         appointmentTotals.completed,
-        appointmentTotals.cancelled,
+        appointmentTotals.cancelledByPatient,
+        appointmentTotals.cancelledByTherapist,
+        appointmentTotals.cancelledSameDay,
+        appointmentTotals.cancelledLegacy,
       ],
     }),
     [appointmentTotals],
@@ -680,6 +706,9 @@ const Reports = () => {
                 </Typography>
                 <Typography variant="body2">
                   Cancellation rate: <strong>{formatPercent(appointmentTotals.cancelled / (appointmentTotals.total || 1))}</strong>
+                </Typography>
+                <Typography variant="body2" className="reports-muted">
+                  Patient: {appointmentTotals.cancelledByPatient} · Therapist: {appointmentTotals.cancelledByTherapist} · Same day: {appointmentTotals.cancelledSameDay}
                 </Typography>
                 <Typography variant="body2">
                   Open invoices: <strong>{outstanding.invoiceCount || 0}</strong> ({formatCurrency(outstanding.totalBalance || 0)})
