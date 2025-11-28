@@ -697,7 +697,7 @@ const Appointments = ({ userData }) => {
     }
   };
 
-  const openCompletionDialog = (appointment) => {
+  const openCompletionDialog = useCallback((appointment) => {
     const allowedValues = COMPLETION_OUTCOME_OPTIONS.map((option) => option.value);
     const nextOutcome = allowedValues.includes(appointment.completion_status)
       ? appointment.completion_status
@@ -710,7 +710,7 @@ const Appointments = ({ userData }) => {
       submitting: false,
       error: '',
     });
-  };
+  }, []);
 
   const closeCompletionDialog = () => {
     setCompletionDialog((prev) => {
@@ -751,7 +751,14 @@ const Appointments = ({ userData }) => {
         outcome: completionDialog.outcome,
         note: completionDialog.note,
       });
-      closeCompletionDialog();
+      setCompletionDialog({
+        open: false,
+        appointment: null,
+        outcome: 'completed',
+        note: '',
+        submitting: false,
+        error: '',
+      });
     } catch (err) {
       const message = err?.response?.data?.message || 'Unable to update appointment outcome';
       setCompletionDialog((prev) => ({ ...prev, error: message }));
@@ -843,7 +850,75 @@ const Appointments = ({ userData }) => {
     [appointments],
   );
 
-  const appointmentColumns = [
+  const canManageAppointments = ['admin', 'therapist', 'receptionist'].includes(userData?.role);
+  const canUpdateOutcome = ['admin', 'therapist'].includes(userData?.role);
+  const canEditTreatmentNotes = ['admin', 'therapist'].includes(userData?.role);
+
+  const actionButtonSx = {
+    px: 2.5,
+    minWidth: 120,
+    borderRadius: 999,
+    textTransform: 'none',
+    whiteSpace: 'nowrap',
+    fontWeight: 600,
+  };
+
+  const handleActionClick = useCallback((action) => (event) => {
+    event.stopPropagation();
+    action();
+  }, []);
+
+  const renderRowActions = useCallback((row) => (
+    <Box
+      sx={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: isMobile ? 1 : 1.5,
+        width: '100%',
+      }}
+    >
+      {canManageAppointments && (
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={handleActionClick(() => openEditDialog(row))}
+          sx={{ ...actionButtonSx, color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
+          fullWidth={isMobile}
+        >
+          Edit
+        </Button>
+      )}
+      {canUpdateOutcome && (
+        <Button
+          size="small"
+          variant="contained"
+          color="secondary"
+          onClick={handleActionClick(() => openCompletionDialog(row))}
+          sx={{ ...actionButtonSx }}
+          fullWidth={isMobile}
+        >
+          Update outcome
+        </Button>
+      )}
+      {canManageAppointments && (
+        <Button
+          size="small"
+          color="error"
+          variant="contained"
+          onClick={handleActionClick(() => handleDeleteAppointment(row.appointment_id))}
+          sx={{ ...actionButtonSx }}
+          fullWidth={isMobile}
+        >
+          Delete
+        </Button>
+      )}
+    </Box>
+  ), [canManageAppointments, canUpdateOutcome, handleActionClick, handleDeleteAppointment, isMobile, openCompletionDialog, openEditDialog]);
+
+  const appointmentColumns = useMemo(() => {
+    const columns = [
     {
       id: 'date',
       label: 'Date',
@@ -1003,72 +1078,32 @@ const Appointments = ({ userData }) => {
     },
   ];
 
-  const canManageAppointments = ['admin', 'therapist', 'receptionist'].includes(userData?.role);
-  const canUpdateOutcome = ['admin', 'therapist'].includes(userData?.role);
-  const canEditTreatmentNotes = ['admin', 'therapist'].includes(userData?.role);
+    if (canManageAppointments || canUpdateOutcome) {
+      columns.push({
+        id: 'actions',
+        label: 'Actions',
+        align: 'right',
+        sortable: false,
+        filterable: false,
+        minWidth: isMobile ? 160 : 260,
+        render: renderRowActions,
+      });
+    }
 
-  const actionButtonSx = {
-    px: 2.5,
-    minWidth: 120,
-    borderRadius: 999,
-    textTransform: 'none',
-    whiteSpace: 'nowrap',
-    fontWeight: 600,
-  };
-
-  const handleActionClick = (action) => (event) => {
-    event.stopPropagation();
-    action();
-  };
-
-  const renderRowActions = (row) => (
-    <Box
-      sx={{
-        display: 'flex',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-        flexDirection: isMobile ? 'column' : 'row',
-        gap: isMobile ? 1 : 1.5,
-        width: '100%',
-      }}
-    >
-      {canManageAppointments && (
-        <Button
-          size="small"
-          variant="outlined"
-          onClick={handleActionClick(() => openEditDialog(row))}
-          sx={{ ...actionButtonSx, color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}
-          fullWidth={isMobile}
-        >
-          Edit
-        </Button>
-      )}
-      {canUpdateOutcome && (
-        <Button
-          size="small"
-          variant="contained"
-          color="secondary"
-          onClick={handleActionClick(() => openCompletionDialog(row))}
-          sx={{ ...actionButtonSx }}
-          fullWidth={isMobile}
-        >
-          Update outcome
-        </Button>
-      )}
-      {canManageAppointments && (
-        <Button
-          size="small"
-          color="error"
-          variant="contained"
-          onClick={handleActionClick(() => handleDeleteAppointment(row.appointment_id))}
-          sx={{ ...actionButtonSx }}
-          fullWidth={isMobile}
-        >
-          Delete
-        </Button>
-      )}
-    </Box>
-  );
+    return columns;
+  }, [
+    appointmentStatusOptions,
+    canManageAppointments,
+    canUpdateOutcome,
+    formatCurrency,
+    isMobile,
+    openTreatmentNoteDialog,
+    outcomeFilterOptions,
+    paymentStatusOptions,
+    renderRowActions,
+    therapistLookupByEmployeeId,
+    therapistLookupById,
+  ]);
 
   const renderAppointmentCard = (row) => {
     const eventDate = row.date ? new Date(row.date) : null;
@@ -1123,17 +1158,6 @@ const Appointments = ({ userData }) => {
       </Card>
     );
   };
-if (canManageAppointments || canUpdateOutcome) {
-    appointmentColumns.push({
-      id: 'actions',
-      label: 'Actions',
-      align: 'right',
-      sortable: false,
-      filterable: false,
-      minWidth: isMobile ? 160 : 260,
-      render: renderRowActions,
-    });
-  }
 
   const selectedPatient = useMemo(() => {
     const selectedId = Number(formState.patient_id);
