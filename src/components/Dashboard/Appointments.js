@@ -1095,7 +1095,6 @@ const Appointments = ({ userData }) => {
     appointmentStatusOptions,
     canManageAppointments,
     canUpdateOutcome,
-    formatCurrency,
     isMobile,
     openTreatmentNoteDialog,
     outcomeFilterOptions,
