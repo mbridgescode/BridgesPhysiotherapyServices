@@ -149,7 +149,7 @@ const Dashboard = () => {
             <Route path="appointments" element={<Appointments userData={userData} />} />
             <Route path="patients" element={<Patients userData={userData} />} />
             <Route path="patients/:id" element={<PatientDetails />} />
-            <Route path="invoices" element={<Invoices />} />
+            <Route path="invoices" element={<Invoices userData={userData} />} />
             <Route path="payments" element={<Payments userData={userData} />} />
             <Route path="reports" element={<Reports />} />
             <Route path="profit-loss" element={<ProfitLoss />} />

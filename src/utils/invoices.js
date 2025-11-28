@@ -48,8 +48,14 @@ const refreshInvoiceWithPayments = async (invoice) => {
   });
 
   const payments = toPlainObject(paymentDocs);
+  const appliedPayments = payments.filter(
+    (payment) => (payment.status || 'applied') === 'applied',
+  );
 
-  const totalPaid = payments.reduce((sum, payment) => sum + payment.amount_paid, 0);
+  const totalPaid = appliedPayments.reduce(
+    (sum, payment) => sum + payment.amount_paid,
+    0,
+  );
   invoice.total_paid = totalPaid;
   invoice.balance_due = Math.max(0, invoice.total_due - totalPaid);
   invoice.totals = {

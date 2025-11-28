@@ -959,6 +959,64 @@ router.post(
 );
 
 router.patch(
+  '/:invoiceNumber/unpay',
+  authenticate,
+  authorize('admin'),
+  async (req, res, next) => {
+    try {
+      const invoice = await Invoice.findOne({ invoice_number: req.params.invoiceNumber });
+      if (!invoice) {
+        return res.status(404).json({ success: false, message: 'Invoice not found' });
+      }
+
+      const patientDoc = await Patient.findOne({ patient_id: invoice.patient_id });
+      const patient = toPlainObject(patientDoc);
+
+      const paymentQuery = {
+        $or: [
+          { invoice_number: invoice.invoice_number },
+          { invoice_id: invoice.invoice_id },
+        ],
+      };
+
+      const payments = await Payment.find(paymentQuery);
+      const refundedPaymentIds = payments
+        .map((payment) => payment.payment_id || payment._id?.toString?.())
+        .filter(Boolean);
+
+      if (payments.length > 0) {
+        await Payment.updateMany(paymentQuery, { $set: { status: 'refunded' } });
+      }
+
+      await refreshInvoiceWithPayments(invoice);
+      invoice.paid_at = null;
+      invoice.updatedBy = req.user.id;
+      await invoice.save();
+
+      await recordAuditEvent({
+        event: 'invoice.markUnpaid',
+        success: true,
+        actorId: req.user.id,
+        actorRole: req.user.role,
+        metadata: {
+          invoice_number: invoice.invoice_number,
+          refunded_payment_ids: refundedPaymentIds,
+          refunded_payment_count: payments.length,
+        },
+      });
+
+      return res.json({
+        success: true,
+        message: 'Invoice marked as unpaid.',
+        invoice: serializeInvoice(invoice, { patient }),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
+
+router.patch(
   '/:invoiceNumber/void',
   authenticate,
   authorize('admin'),

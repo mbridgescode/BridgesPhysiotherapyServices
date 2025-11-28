@@ -29,6 +29,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import SendIcon from '@mui/icons-material/Send';
 import PaidIcon from '@mui/icons-material/Paid';
+import UndoIcon from '@mui/icons-material/Undo';
 import apiClient from '../../utils/apiClient';
 import DataTable from '../common/DataTable';
 
@@ -60,7 +61,7 @@ const PAYMENT_METHODS = [
   { value: 'other', label: 'Other' },
 ];
 
-const Invoices = () => {
+const Invoices = ({ userData }) => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -77,6 +78,8 @@ const Invoices = () => {
   const [downloadingPdfFor, setDownloadingPdfFor] = useState(null);
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
   const [markPaidState, setMarkPaidState] = useState(() => defaultMarkPaidState());
+  const [markingUnpaidFor, setMarkingUnpaidFor] = useState(null);
+  const isAdmin = (userData?.role || '').toLowerCase() === 'admin';
 
   const showToast = useCallback((message, severity = 'success') => {
     setToast({ open: true, message, severity });
@@ -300,6 +303,37 @@ const Invoices = () => {
       console.error('Failed to mark invoice as paid', err);
       showToast(err?.response?.data?.message || 'Failed to mark invoice as paid', 'error');
       setMarkPaidState((prev) => ({ ...prev, submitting: false }));
+    }
+  };
+
+  const markInvoiceAsUnpaid = async (invoice) => {
+    if (!invoice?.invoice_number) {
+      return;
+    }
+
+    const confirmation = `Mark invoice ${invoice.invoice_number} as unpaid? `
+      + 'This will remove recorded payments and reopen the balance.';
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(confirmation);
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setMarkingUnpaidFor(invoice.invoice_number);
+    try {
+      const response = await apiClient.patch(`/api/invoices/${invoice.invoice_number}/unpay`);
+      if (response.data?.success) {
+        showToast(response.data?.message || 'Invoice marked as unpaid');
+      } else {
+        showToast(response.data?.message || 'Unable to mark invoice as unpaid', 'error');
+      }
+      await loadInvoices();
+    } catch (err) {
+      console.error('Failed to mark invoice as unpaid', err);
+      showToast(err?.response?.data?.message || 'Failed to mark invoice as unpaid', 'error');
+    } finally {
+      setMarkingUnpaidFor(null);
     }
   };
 
@@ -737,63 +771,85 @@ const Invoices = () => {
       sortable: false,
       filterable: false,
       minWidth: 190,
-      render: (row) => (
-        <Box display="flex" justifyContent="flex-end" gap={1}>
-          <Tooltip title="Download PDF">
-            <span>
-              <IconButton
-                size="small"
-                onClick={() => downloadInvoicePdf(row)}
-                disabled={downloadingPdfFor === row.invoice_number}
-                aria-busy={downloadingPdfFor === row.invoice_number}
-              >
-                {downloadingPdfFor === row.invoice_number ? (
-                  <CircularProgress size={16} />
-                ) : (
-                  <PictureAsPdfIcon fontSize="inherit" />
-                )}
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip
-            title={
-              row.totals?.balance > 0
-                ? 'Mark as paid'
-                : 'Invoice already paid'
-            }
-          >
-            <span>
-              <IconButton
-                size="small"
-                onClick={() => openMarkPaidDialog(row)}
-                disabled={(row.totals?.balance ?? row.balance_due ?? 0) <= 0}
-              >
-                <PaidIcon fontSize="inherit" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Send via email">
-            <span>
-              <IconButton
-                size="small"
-                onClick={() => sendInvoiceEmail(row.invoice_number)}
-              >
-                <SendIcon fontSize="inherit" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Void invoice">
-            <span>
-              <IconButton
-                size="small"
-                onClick={() => voidInvoice(row.invoice_number)}
-              >
-                <DeleteIcon fontSize="inherit" />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Box>
-      ),
+      render: (row) => {
+        const balance = row.totals?.balance ?? row.balance_due ?? row.total_due ?? 0;
+        const fullyPaid = balance <= 0;
+
+        return (
+          <Box display="flex" justifyContent="flex-end" gap={1}>
+            <Tooltip title="Download PDF">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => downloadInvoicePdf(row)}
+                  disabled={downloadingPdfFor === row.invoice_number}
+                  aria-busy={downloadingPdfFor === row.invoice_number}
+                >
+                  {downloadingPdfFor === row.invoice_number ? (
+                    <CircularProgress size={16} />
+                  ) : (
+                    <PictureAsPdfIcon fontSize="inherit" />
+                  )}
+                </IconButton>
+              </span>
+            </Tooltip>
+            {isAdmin && fullyPaid && (
+              <Tooltip title="Mark as unpaid">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={() => markInvoiceAsUnpaid(row)}
+                    disabled={markingUnpaidFor === row.invoice_number}
+                  >
+                    {markingUnpaidFor === row.invoice_number ? (
+                      <CircularProgress size={16} />
+                    ) : (
+                      <UndoIcon fontSize="inherit" />
+                    )}
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
+            <Tooltip
+              title={
+                balance > 0
+                  ? 'Mark as paid'
+                  : 'Invoice already paid'
+              }
+            >
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => openMarkPaidDialog(row)}
+                  disabled={balance <= 0}
+                >
+                  <PaidIcon fontSize="inherit" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Send via email">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => sendInvoiceEmail(row.invoice_number)}
+                >
+                  <SendIcon fontSize="inherit" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Void invoice">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => voidInvoice(row.invoice_number)}
+                >
+                  <DeleteIcon fontSize="inherit" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+        );
+      },
     },
   ];
 

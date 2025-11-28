@@ -21,10 +21,9 @@ const fetchPaymentStatus = async (appointmentId, amountOwed) => {
     const invoice = toPlainObject(invoiceDoc);
     const payments = toPlainObject(paymentDocs);
 
-    const totalPaidFromPayments = payments.reduce(
-      (sum, payment) => sum + payment.amount_paid,
-      0,
-    );
+    const totalPaidFromPayments = payments
+      .filter((payment) => (payment.status || 'applied') === 'applied')
+      .reduce((sum, payment) => sum + payment.amount_paid, 0);
 
     if (invoice) {
       if (invoice.status === 'paid') {
