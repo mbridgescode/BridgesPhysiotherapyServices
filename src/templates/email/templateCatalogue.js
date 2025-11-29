@@ -1,6 +1,5 @@
 const { buildBookingConfirmationEmail } = require('./bookingConfirmationEmail');
 const { buildInvoiceDeliveryEmail, buildCancellationFeeInvoiceEmail } = require('./invoiceDeliveryEmail');
-const { buildInitialAssessmentEmail } = require('./initialAssessmentEmail');
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -132,11 +131,11 @@ const buildInitialAssessmentTestEmail = ({ clinicSettings }) => {
     treatment_description: 'Initial neurological physiotherapy assessment',
     date: new Date(Date.now() + (5 * DAY_IN_MS)),
   });
-  const content = buildInitialAssessmentEmail({
+  const content = buildBookingConfirmationEmail({
     patientName: `${patient.first_name} ${patient.surname}`,
-    appointment,
+    appointments: [appointment],
     clinicSettings,
-    preparationNotes: 'Please have any recent letters, discharge summaries, and a list of your current medications ready. Wear comfortable clothing you can move in.',
+    additionalNote: `For your initial assessment, it can be really helpful if you have any medical information available such as clinic letters, discharge summaries, doctor's notes, or a list of your current medications. If these aren't available, please don't worry. As we work within the community, occasional delays can happen. If your therapist is running more than 15 minutes behind, they will contact you to let you know.`,
   });
   return {
     subject: content.subject,
