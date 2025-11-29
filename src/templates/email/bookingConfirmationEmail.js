@@ -1,8 +1,5 @@
 const { renderEmailTemplate } = require('./baseEmailTemplate');
-
-const DEFAULT_PRIVACY_POLICY_URL = process.env.PRIVACY_POLICY_URL || 'https://www.bridgesphysiotherapy.co.uk/privacy-policy';
-const DEFAULT_CANCELLATION_POLICY_URL =
-  process.env.CANCELLATION_POLICY_URL || 'https://www.bridgesphysiotherapy.co.uk/cancellation-charges';
+const { buildComplianceBlockHtml, buildComplianceTextLines } = require('./complianceBlocks');
 
 const formatDateTime = (value, timeZone = 'Europe/London') => {
   if (!value) {
@@ -76,31 +73,6 @@ const buildAppointmentMessage = (appointments = []) => {
     html: `<p style="margin:0 0 18px;">${text}</p>`,
     text,
   };
-};
-
-const buildComplianceBlockHtml = (branding = {}) => {
-  const privacyUrl = branding.privacy_policy_url || DEFAULT_PRIVACY_POLICY_URL;
-  const cancellationUrl = branding.cancellation_policy_url || DEFAULT_CANCELLATION_POLICY_URL;
-  return `
-  <div style="margin-top:24px;padding:14px 18px;background:rgba(15,23,42,0.04);border-radius:12px;">
-    <strong style="display:block;margin-bottom:6px;color:#0f172a;">Helpful links</strong>
-    <a href="${privacyUrl}" style="display:inline-block;color:#1f3e82;text-decoration:none;margin-right:18px;">
-      Privacy policy
-    </a>
-    <a href="${cancellationUrl}" style="display:inline-block;color:#1f3e82;text-decoration:none;">
-      Cancellation charges
-    </a>
-  </div>
-`;
-};
-
-const buildComplianceText = (branding = {}) => {
-  const privacyUrl = branding.privacy_policy_url || DEFAULT_PRIVACY_POLICY_URL;
-  const cancellationUrl = branding.cancellation_policy_url || DEFAULT_CANCELLATION_POLICY_URL;
-  return [
-    `Privacy policy: ${privacyUrl}`,
-    `Cancellation charges: ${cancellationUrl}`,
-  ];
 };
 
 const buildAppointmentsTable = (appointments = [], timeZone) => {
@@ -219,7 +191,7 @@ const buildBookingConfirmationEmail = ({
     clinicLines,
     extraNote: additionalNote,
     appointmentMessage: appointmentMessage.text,
-    complianceLines: buildComplianceText(branding),
+    complianceLines: buildComplianceTextLines(branding),
   });
 
   const subject = `Booking confirmation - ${formatDateShort(appointments[0]?.date, timeZone)}`;

@@ -4,9 +4,7 @@ const {
   formatCurrency,
   formatLongDate,
 } = require('../invoice/templidInvoice');
-
-const DEFAULT_CANCELLATION_POLICY_URL =
-  process.env.CANCELLATION_POLICY_URL || 'https://www.bridgesphysiotherapy.co.uk/cancellation-charges';
+const { buildComplianceBlockHtml, buildComplianceTextLines, resolveComplianceLinks } = require('./complianceBlocks');
 
 const escapeHtml = (value = '') =>
   String(value)
@@ -48,6 +46,7 @@ const buildPlainTextEmail = ({
   paymentLines,
   clinicLines,
   notesLines = [],
+  complianceLines = [],
 }) => {
   const filteredNotes = notesLines.filter(Boolean);
   const filteredPayments = paymentLines.filter(Boolean);
@@ -69,6 +68,9 @@ const buildPlainTextEmail = ({
   lines.push('Payment instructions:');
   if (filteredPayments.length) {
     lines.push(...filteredPayments);
+  }
+  if (complianceLines.length) {
+    lines.push('', ...complianceLines);
   }
 
   if (clinicLines.length) {
@@ -167,6 +169,7 @@ const buildInvoiceDeliveryEmail = ({
   const branding = clinicSettings?.branding || {};
   const clinicLines = buildFooterLines(branding);
   const paymentLines = normalizePaymentInstructionLines(clinicSettings);
+  const complianceLines = buildComplianceTextLines(branding);
   const totals = invoice?.totals || {};
   const balance = totals.balance ?? invoice.balance_due ?? totals.gross ?? invoice.total_due ?? 0;
   const highlightValue = formatCurrency(balance, invoice.currency || 'GBP');
@@ -189,6 +192,7 @@ const buildInvoiceDeliveryEmail = ({
     <p style="margin:0 0 12px;color:#475569;">Please review the attached document at your convenience. A PDF copy has been included for your records.</p>
     ${buildPaymentInstructionsHtml(paymentLines)}
     ${buildNotesHtml('Helpful notes', notesLines)}
+    ${buildComplianceBlockHtml(branding)}
   `;
 
   const html = renderEmailTemplate({
@@ -207,6 +211,7 @@ const buildInvoiceDeliveryEmail = ({
     paymentLines,
     clinicLines,
     notesLines,
+    complianceLines,
   });
 
   return {
@@ -226,6 +231,8 @@ const buildCancellationFeeInvoiceEmail = ({
   const branding = clinicSettings?.branding || {};
   const clinicLines = buildFooterLines(branding);
   const paymentLines = normalizePaymentInstructionLines(clinicSettings);
+  const complianceLines = buildComplianceTextLines(branding);
+  const { cancellationUrl } = resolveComplianceLinks(branding);
   const totals = invoice?.totals || {};
   const balance = totals.balance ?? invoice.balance_due ?? totals.gross ?? invoice.total_due ?? 0;
   const highlightValue = formatCurrency(balance, invoice.currency || 'GBP');
@@ -239,7 +246,7 @@ const buildCancellationFeeInvoiceEmail = ({
   const notesLines = [
     `A same-day cancellation fee has been applied for ${treatmentSummary} on ${friendlyAppointmentDate}.`,
     'Because the session was cancelled on the day, 50% of the appointment fee is payable in line with our policy.',
-    `Policy: ${DEFAULT_CANCELLATION_POLICY_URL}`,
+    `Policy: ${cancellationUrl}`,
   ];
 
   const patientName = resolvePatientName(patient, invoice, billingContact);
@@ -257,6 +264,7 @@ const buildCancellationFeeInvoiceEmail = ({
     })}
     ${buildPaymentInstructionsHtml(paymentLines)}
     ${buildNotesHtml('Cancellation notes', notesLines)}
+    ${buildComplianceBlockHtml(branding)}
   `;
 
   const html = renderEmailTemplate({
@@ -275,6 +283,7 @@ const buildCancellationFeeInvoiceEmail = ({
     paymentLines,
     clinicLines,
     notesLines,
+    complianceLines,
   });
 
   return {
