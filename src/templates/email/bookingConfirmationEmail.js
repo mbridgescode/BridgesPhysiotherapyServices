@@ -61,14 +61,14 @@ const buildAppointmentMessage = (appointments = []) => {
   );
 
   if (hasInitialAssessment) {
-    const text = 'For your initial assessment, it can be really helpful if you have any medical information available, such as clinic letters, discharge summaries, doctor's notes, or a list of your current medications. If these aren't available, please don't worry. As we work within the community, occasional delays can happen. If your therapist is running more than 15 minutes behind, they will contact you to let you know.';
+    const text = `For your initial assessment, it can be really helpful if you have any medical information available, such as clinic letters, discharge summaries, doctor's notes, or a list of your current medications. If these aren't available, please don't worry. As we work within the community, occasional delays can happen. If your therapist is running more than 15 minutes behind, they will contact you to let you know.`;
     return {
       html: `<p style="margin:0 0 18px;">${text}</p>`,
       text,
     };
   }
 
-  const text = 'We look forward to your upcoming appointment. As we work within the community, occasional delays can happen. If your therapist is running more than 15 minutes behind, they will contact you to let you know.';
+  const text = `We look forward to your upcoming appointment. As we work within the community, occasional delays can happen. If your therapist is running more than 15 minutes behind, they will contact you to let you know.`;
   return {
     html: `<p style="margin:0 0 18px;">${text}</p>`,
     text,
