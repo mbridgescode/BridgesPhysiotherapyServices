@@ -1,5 +1,6 @@
 const { buildBookingConfirmationEmail } = require('./bookingConfirmationEmail');
 const { buildInvoiceDeliveryEmail, buildCancellationFeeInvoiceEmail } = require('./invoiceDeliveryEmail');
+const { buildInitialAssessmentEmail } = require('./initialAssessmentEmail');
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -125,6 +126,28 @@ const buildBookingConfirmationTestEmail = ({ clinicSettings }) => {
   };
 };
 
+const buildInitialAssessmentTestEmail = ({ clinicSettings }) => {
+  const patient = createSamplePatient();
+  const appointment = createSampleAppointment({
+    treatment_description: 'Initial neurological physiotherapy assessment',
+    date: new Date(Date.now() + (5 * DAY_IN_MS)),
+  });
+  const content = buildInitialAssessmentEmail({
+    patientName: `${patient.first_name} ${patient.surname}`,
+    appointment,
+    clinicSettings,
+    preparationNotes: 'Please have any recent letters, discharge summaries, and a list of your current medications ready. Wear comfortable clothing you can move in.',
+  });
+  return {
+    subject: content.subject,
+    html: content.html,
+    text: content.text,
+    metadata: {
+      appointment_id: appointment.appointment_id,
+    },
+  };
+};
+
 const buildInvoiceDeliveryTestEmail = ({ clinicSettings }) => {
   const context = createSampleInvoiceContext({
     invoiceNumber: 'INV-TEST-1001',
@@ -190,6 +213,12 @@ const EMAIL_TEMPLATE_DEFINITIONS = [
     label: 'Booking confirmation',
     description: 'Sent to patients when an appointment is scheduled.',
     build: buildBookingConfirmationTestEmail,
+  },
+  {
+    id: 'initial_assessment',
+    label: 'Initial assessment',
+    description: 'Prepares patients for their first session with tips and policy links.',
+    build: buildInitialAssessmentTestEmail,
   },
   {
     id: 'invoice_delivery',
