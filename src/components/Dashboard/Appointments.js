@@ -170,6 +170,7 @@ const createEmptyEditValues = () => ({
   price: '',
   therapistId: '',
   employeeID: '',
+  sendRescheduleEmail: true,
 });
 
 const formatStatusLabel = (status) => {
@@ -662,6 +663,7 @@ const Appointments = ({ userData }) => {
       price: priceValue,
       therapist: therapist.id,
       employeeID: employeeIdValue,
+      sendRescheduleEmail: editDialog.values.sendRescheduleEmail !== false,
     };
 
     try {
@@ -2000,6 +2002,17 @@ const Appointments = ({ userData }) => {
                 onChange={(event) => handleEditFieldChange('price', event.target.value)}
                 error={Boolean(editDialog.errors.price)}
                 helperText={editDialog.errors.price}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={(
+                  <Checkbox
+                    checked={Boolean(editDialog.values.sendRescheduleEmail)}
+                    onChange={(event) => handleEditFieldChange('sendRescheduleEmail', event.target.checked)}
+                  />
+                )}
+                label="Send reschedule confirmation email (includes new date and time)"
               />
             </Grid>
           </Grid>

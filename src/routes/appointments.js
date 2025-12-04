@@ -17,6 +17,7 @@ const { buildInvoiceDeliveryEmail, buildCancellationFeeInvoiceEmail } = require(
 const { generateInvoicePdf } = require('../services/pdfService');
 const { calculateTotals } = require('../utils/invoices');
 const { toPlainObject } = require('../utils/mongoose');
+const { buildRescheduleConfirmationEmail } = require('../templates/email/rescheduleConfirmationEmail');
 
 const router = express.Router();
 
@@ -661,9 +662,37 @@ router.put(
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
+      const originalAppointment = toPlainObject(appointment);
+
+      const shouldSendRescheduleEmail = (() => {
+        const flag = req.body.sendRescheduleEmail;
+        if (flag === undefined || flag === null || flag === '') {
+          return false;
+        }
+        if (typeof flag === 'string') {
+          const normalized = flag.trim().toLowerCase();
+          if (['false', '0', 'no', 'off'].includes(normalized)) {
+            return false;
+          }
+          if (['true', '1', 'yes', 'on'].includes(normalized)) {
+            return true;
+          }
+          return normalized !== 'false';
+        }
+        return Boolean(flag);
+      })();
+
       const updatePayload = {
         ...req.body,
       };
+
+      if (updatePayload.date) {
+        const parsedDate = new Date(updatePayload.date);
+        if (Number.isNaN(parsedDate.getTime())) {
+          return res.status(400).json({ success: false, message: 'Invalid appointment date' });
+        }
+        updatePayload.date = parsedDate;
+      }
 
       if (updatePayload.status && CANCELLED_STATUSES.includes(updatePayload.status)) {
         updatePayload.cancelled_at = new Date();
@@ -671,6 +700,7 @@ router.put(
 
       delete updatePayload.appointment_id;
       delete updatePayload.patient_id;
+      delete updatePayload.sendRescheduleEmail;
 
       Object.entries(updatePayload).forEach(([key, value]) => {
         if (value !== undefined) {
@@ -681,6 +711,50 @@ router.put(
       appointment.updatedBy = req.user.id;
       await appointment.save();
 
+      const scheduleChanged = (() => {
+        const originalDate = originalAppointment?.date ? new Date(originalAppointment.date) : null;
+        const newDate = appointment.date ? new Date(appointment.date) : null;
+        const originalTime = originalDate ? originalDate.getTime() : null;
+        const newTime = newDate ? newDate.getTime() : null;
+        return originalTime !== newTime;
+      })();
+
+      let rescheduleNotification = null;
+      if (shouldSendRescheduleEmail && scheduleChanged) {
+        const patient = await Patient.findOne({ patient_id: appointment.patient_id });
+
+        if (patient?.email) {
+          try {
+            const therapistRecord = appointment.therapist
+              ? await User.findById(appointment.therapist).select('name username email employeeID')
+              : null;
+
+            const clinicSettings = await getLatestClinicSettings();
+            const emailContent = buildRescheduleConfirmationEmail({
+              patientName: buildPatientDisplayName(patient),
+              appointment: toPlainObject(appointment),
+              clinicSettings,
+              previousDate: originalAppointment?.date,
+              therapistName: therapistRecord?.name
+                || therapistRecord?.username
+                || therapistRecord?.email
+                || (appointment.employeeID ? `Therapist #${appointment.employeeID}` : undefined),
+            });
+
+            rescheduleNotification = await sendTransactionalEmail({
+              to: patient.email,
+              subject: emailContent.subject,
+              html: emailContent.html,
+              text: emailContent.text,
+              patientId: patient.patient_id,
+              metadata: { appointment_id: appointmentId.toString() },
+            });
+          } catch (emailError) {
+            console.error('Failed to send reschedule email', emailError);
+          }
+        }
+      }
+
       await recordAuditEvent({
         event: 'appointment.update',
         success: true,
@@ -689,7 +763,16 @@ router.put(
         metadata: { appointment_id: appointmentId.toString() },
       });
 
-      return res.json({ success: true, appointment: toPlainObject(appointment) });
+      return res.json({
+        success: true,
+        appointment: toPlainObject(appointment),
+        notification: rescheduleNotification
+          ? {
+              status: rescheduleNotification.status,
+              provider: rescheduleNotification.provider,
+            }
+          : null,
+      });
     } catch (error) {
       return next(error);
     }
