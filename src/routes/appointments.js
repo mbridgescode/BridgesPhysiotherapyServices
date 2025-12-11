@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
+const mongoose = require('mongoose');
 const Appointment = require('../models/appointments');
 const Patient = require('../models/patients');
 const User = require('../models/user');
@@ -32,6 +33,19 @@ const toNumberOrUndefined = (value) => {
   }
   const numeric = Number(value);
   return Number.isNaN(numeric) ? undefined : numeric;
+};
+
+const extractTherapistId = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === 'object') {
+    return value.id || value._id || value.value || null;
+  }
+  if (typeof value === 'string') {
+    return value.trim() || null;
+  }
+  return value;
 };
 
 const CANCELLED_STATUSES = [
@@ -664,8 +678,18 @@ router.put(
 
       const originalAppointment = toPlainObject(appointment);
 
+      const {
+        therapist: therapistRaw,
+        therapistId,
+        employeeID: employeeIdRaw,
+        sendRescheduleEmail,
+        appointment_id: _incomingAppointmentId,
+        patient_id: _incomingPatientId,
+        ...body
+      } = req.body;
+
       const shouldSendRescheduleEmail = (() => {
-        const flag = req.body.sendRescheduleEmail;
+        const flag = sendRescheduleEmail;
         if (flag === undefined || flag === null || flag === '') {
           return false;
         }
@@ -683,8 +707,34 @@ router.put(
       })();
 
       const updatePayload = {
-        ...req.body,
+        ...body,
       };
+
+      if (employeeIdRaw !== undefined) {
+        const employeeIdValue = toNumberOrUndefined(employeeIdRaw);
+        if (employeeIdValue === undefined) {
+          return res.status(400).json({ success: false, message: 'employeeID must be numeric' });
+        }
+        updatePayload.employeeID = employeeIdValue;
+      }
+
+      const therapistCandidate = therapistId ?? therapistRaw;
+      if (therapistCandidate !== undefined) {
+        const resolvedTherapistId = extractTherapistId(therapistCandidate);
+        if (!resolvedTherapistId || !mongoose.Types.ObjectId.isValid(resolvedTherapistId)) {
+          return res.status(400).json({ success: false, message: 'Invalid therapist selected' });
+        }
+
+        const therapistRecord = await User.findById(resolvedTherapistId).select('employeeID');
+        if (!therapistRecord) {
+          return res.status(400).json({ success: false, message: 'Selected therapist not found' });
+        }
+
+        updatePayload.therapist = therapistRecord._id;
+        if (updatePayload.employeeID === undefined && therapistRecord.employeeID !== undefined) {
+          updatePayload.employeeID = therapistRecord.employeeID;
+        }
+      }
 
       if (updatePayload.date) {
         const parsedDate = new Date(updatePayload.date);
@@ -697,10 +747,6 @@ router.put(
       if (updatePayload.status && CANCELLED_STATUSES.includes(updatePayload.status)) {
         updatePayload.cancelled_at = new Date();
       }
-
-      delete updatePayload.appointment_id;
-      delete updatePayload.patient_id;
-      delete updatePayload.sendRescheduleEmail;
 
       Object.entries(updatePayload).forEach(([key, value]) => {
         if (value !== undefined) {
