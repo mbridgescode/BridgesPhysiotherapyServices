@@ -24,8 +24,11 @@ import {
   Grid,
   Alert,
   Snackbar,
+  IconButton,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import Tooltip from '@mui/material/Tooltip';
 import Autocomplete from '@mui/material/Autocomplete';
 import { makeStyles } from '@mui/styles';
 import apiClient from '../../utils/apiClient';
@@ -393,18 +396,102 @@ const Payments = ({ userData }) => {
     }
   };
 
+  const downloadReceiptPdf = async (payment) => {
+    if (!payment?.receipt_summary?.receipt_number) {
+      setToast({ message: 'Receipt not available yet', severity: 'error' });
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const receiptNumber = payment.receipt_summary.receipt_number;
+    const endpoint = payment.receipt_summary.pdf_url || `/api/receipts/${receiptNumber}/pdf`;
+
+    try {
+      const response = await apiClient.get(endpoint, { responseType: 'arraybuffer' });
+      const byteView = new Uint8Array(response.data || []);
+      const isPdfSignature = byteView.length >= 4
+        && byteView[0] === 0x25
+        && byteView[1] === 0x50
+        && byteView[2] === 0x44
+        && byteView[3] === 0x46;
+      if (!isPdfSignature) {
+        let decoded;
+        try {
+          decoded = new TextDecoder('utf-8').decode(byteView);
+        } catch (error) {
+          decoded = '';
+        }
+        let errorMessage = 'Unable to download receipt PDF';
+        if (decoded) {
+          try {
+            const parsed = JSON.parse(decoded);
+            errorMessage = parsed?.message || parsed?.error || errorMessage;
+          } catch (parseErr) {
+            errorMessage = decoded;
+          }
+        }
+        console.error('Receipt PDF download returned non-PDF payload', { errorMessage, endpoint });
+        setToast({ message: errorMessage, severity: 'error' });
+        return;
+      }
+      const contentType = response.headers?.['content-type'] || 'application/pdf';
+      const disposition = response.headers?.['content-disposition'] || '';
+      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      const asciiMatch = disposition.match(/filename="?([^\";]+)\"?/i);
+      const decodeFileName = (value) => {
+        try {
+          return decodeURIComponent(value);
+        } catch (error) {
+          return value;
+        }
+      };
+      const filename = (utf8Match && decodeFileName(utf8Match[1]))
+        || (asciiMatch && asciiMatch[1])
+        || `${receiptNumber}.pdf`;
+      const blob = new Blob([response.data], { type: contentType });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 500);
+    } catch (err) {
+      console.error('Failed to download receipt PDF', err);
+      setToast({ message: 'Failed to download receipt PDF', severity: 'error' });
+    }
+  };
+
   const renderRowActions = (row) => (
-    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Tooltip title="View receipt">
+        <span>
+          <IconButton
+            size="small"
+            onClick={() => downloadReceiptPdf(row)}
+            disabled={!row.receipt_summary?.receipt_number}
+          >
+            <PictureAsPdfIcon fontSize="inherit" />
+          </IconButton>
+        </span>
+      </Tooltip>
       <Button
         size="small"
         variant="outlined"
         startIcon={sendingReceiptFor === row.payment_id ? <CircularProgress size={14} /> : <SendIcon />}
         onClick={() => handleSendReceipt(row)}
         disabled={sendingReceiptFor === row.payment_id}
+        sx={{ minWidth: 0 }}
       >
         {sendingReceiptFor === row.payment_id ? 'Sending...' : 'Send Receipt'}
       </Button>
-      <Button size="small" variant="outlined" onClick={() => handleEditPayment(row)}>
+      <Button size="small" variant="outlined" onClick={() => handleEditPayment(row)} sx={{ minWidth: 0 }}>
         Edit
       </Button>
       <Button
@@ -412,6 +499,7 @@ const Payments = ({ userData }) => {
         variant="outlined"
         color="error"
         onClick={() => handleOpenDeleteDialog(row)}
+        sx={{ minWidth: 0 }}
       >
         Delete
       </Button>
