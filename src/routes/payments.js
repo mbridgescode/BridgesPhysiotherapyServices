@@ -1,13 +1,16 @@
 const express = require('express');
 const Payment = require('../models/payments');
 const Invoice = require('../models/invoices');
+const Receipt = require('../models/receipts');
 const Counter = require('../models/counter');
 const { authenticate, authorize } = require('../middleware/auth');
 const { recordAuditEvent } = require('../utils/audit');
 const { refreshInvoiceWithPayments } = require('../utils/invoices');
+const { ensureReceiptForPayment, backfillReceiptsForPayments } = require('../services/receiptService');
 const { toPlainObject } = require('../utils/mongoose');
 
 const router = express.Router();
+let receiptBackfillTriggered = false;
 
 const sanitizeNumber = (value) => {
   if (value === undefined || value === null || value === '') {
@@ -127,6 +130,13 @@ router.get(
 
       const paymentDocs = await Payment.find(query).sort({ payment_date: -1 });
       const payments = toPlainObject(paymentDocs);
+      const paymentIds = [
+        ...new Set(
+          payments
+            .map((payment) => payment.payment_id)
+            .filter((value) => value !== undefined && value !== null),
+        ),
+      ];
       const invoiceIds = [
         ...new Set(
           payments
@@ -139,12 +149,31 @@ router.get(
       const invoiceSummaries = new Map(
         invoices.map((invoice) => [invoice.invoice_id, buildInvoiceSummary(invoice)]),
       );
+      const receiptDocs = paymentIds.length
+        ? await Receipt.find({ payment_id: { $in: paymentIds } })
+          .select('payment_id receipt_id receipt_number status pdf_url')
+        : [];
+      const receiptSummaries = new Map(
+        toPlainObject(receiptDocs).map((receipt) => [receipt.payment_id, receipt]),
+      );
+
+      if (!receiptBackfillTriggered && paymentIds.length > receiptDocs.length) {
+        receiptBackfillTriggered = true;
+        setImmediate(async () => {
+          try {
+            await backfillReceiptsForPayments({ payments: paymentDocs, actorId: req.user.id });
+          } catch (backfillError) {
+            console.error('Failed to backfill receipts for payments', backfillError);
+          }
+        });
+      }
 
       res.json({
         success: true,
         payments: payments.map((payment) => ({
           ...payment,
           invoice_summary: invoiceSummaries.get(payment.invoice_id) || null,
+          receipt_summary: receiptSummaries.get(payment.payment_id) || null,
         })),
       });
     } catch (error) {
@@ -221,6 +250,18 @@ router.post(
       invoice.updatedBy = req.user.id;
       await invoice.save();
 
+      let receiptSummary = null;
+      try {
+        const receiptResult = await ensureReceiptForPayment({
+          payment,
+          invoice,
+          actorId: req.user.id,
+        });
+        receiptSummary = receiptResult?.receipt ? toPlainObject(receiptResult.receipt) : null;
+      } catch (receiptError) {
+        console.error('Failed to create receipt for payment', receiptError);
+      }
+
       await recordAuditEvent({
         event: 'payment.create',
         success: true,
@@ -237,6 +278,7 @@ router.post(
         payment: {
           ...toPlainObject(payment),
           invoice_summary: buildInvoiceSummary(invoice),
+          receipt_summary: receiptSummary,
         },
       });
     } catch (error) {
@@ -347,6 +389,19 @@ router.put(
         }
       }
 
+      let receiptSummary = null;
+      try {
+        const receiptResult = await ensureReceiptForPayment({
+          payment,
+          invoice,
+          actorId: req.user.id,
+          forceGeneratePdf: true,
+        });
+        receiptSummary = receiptResult?.receipt ? toPlainObject(receiptResult.receipt) : null;
+      } catch (receiptError) {
+        console.error('Failed to update receipt for payment', receiptError);
+      }
+
       await recordAuditEvent({
         event: 'payment.update',
         success: true,
@@ -364,6 +419,7 @@ router.put(
           invoice_summary: buildInvoiceSummary(
             refreshedInvoices.get(payment.invoice_id) || (await Invoice.findOne({ invoice_id: payment.invoice_id })),
           ),
+          receipt_summary: receiptSummary,
         },
       });
     } catch (error) {
@@ -388,6 +444,7 @@ router.delete(
       }
 
       await refreshInvoiceById(payment.invoice_id, req.user.id);
+      await Receipt.findOneAndDelete({ payment_id: payment.payment_id });
 
       await recordAuditEvent({
         event: 'payment.delete',

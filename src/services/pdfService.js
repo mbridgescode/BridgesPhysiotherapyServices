@@ -19,11 +19,13 @@ try {
 
 const {
   invoiceStoragePath,
+  receiptStoragePath,
   pdfTempPath,
   chromiumRemoteExecutable,
   chromiumLocalExecutable,
 } = require('../config/env');
 const { renderTemplidInvoice } = require('../templates/invoice/templidInvoice');
+const { renderTemplidReceipt } = require('../templates/receipt/templidReceipt');
 
 const ensureDirectory = (dirPath) => {
   if (!dirPath) {
@@ -43,6 +45,8 @@ const ensureDirectory = (dirPath) => {
 
 let resolvedPersistDirectory = null;
 let persistDirectoryResolved = false;
+let resolvedReceiptDirectory = null;
+let receiptDirectoryResolved = false;
 
 const normalizeToBuffer = (value, label = 'pdfService') => {
   if (!value) {
@@ -86,6 +90,34 @@ const resolvePersistDirectory = () => {
   persistDirectoryResolved = true;
   resolvedPersistDirectory = null;
   console.warn('[pdfService] Warning: no writable directory available for invoice PDFs; falling back to in-memory buffers only.');
+  return null;
+};
+
+const resolveReceiptPersistDirectory = () => {
+  if (receiptDirectoryResolved) {
+    return resolvedReceiptDirectory;
+  }
+
+  const fallbackDirectories = Array.from(new Set(
+    [
+      receiptStoragePath,
+      pdfTempPath,
+      path.join(os.tmpdir(), 'bridges-physio-receipts'),
+    ].filter(Boolean),
+  ));
+
+  for (const candidate of fallbackDirectories) {
+    const resolved = ensureDirectory(candidate);
+    if (resolved) {
+      resolvedReceiptDirectory = resolved;
+      receiptDirectoryResolved = true;
+      return resolvedReceiptDirectory;
+    }
+  }
+
+  receiptDirectoryResolved = true;
+  resolvedReceiptDirectory = null;
+  console.warn('[pdfService] Warning: no writable directory available for receipt PDFs; falling back to in-memory buffers only.');
   return null;
 };
 
@@ -387,6 +419,70 @@ const generateInvoicePdf = async ({ invoice, clinicSettings }) => {
   };
 };
 
+const generateReceiptPdf = async ({ receipt, clinicSettings }) => {
+  const persistDirectory = resolveReceiptPersistDirectory();
+
+  const filename = `${receipt.receipt_number}.pdf`;
+  const targetPath = persistDirectory ? path.join(persistDirectory, filename) : null;
+  const billingContact = buildBillingContact(receipt);
+  const patientSummary = buildPatientSummary(receipt);
+  const notesLines = buildNotesLines(receipt);
+  const html = renderTemplidReceipt({
+    receipt,
+    clinicSettings,
+    billingContact,
+    patient: patientSummary || undefined,
+    notesHeading: notesLines?.length ? 'Notes' : undefined,
+    notesLines,
+    includeWrapper: true,
+  });
+
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+
+  let pdfBuffer;
+
+  try {
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    await waitForFonts(page);
+    await waitForContent(page);
+    await page.emulateMediaType('screen');
+    pdfBuffer = await page.pdf({
+      path: targetPath || undefined,
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20mm',
+        right: '16mm',
+        bottom: '20mm',
+        left: '16mm',
+      },
+    });
+    pdfBuffer = normalizeToBuffer(pdfBuffer, 'page.pdf()');
+    if (pdfBuffer?.length) {
+      const firstBytes = pdfBuffer.subarray(0, 8).toString('hex');
+      console.log('[pdfService] pdf-bytes', {
+        receipt: receipt?.receipt_number,
+        bytes: firstBytes,
+        size: pdfBuffer.length,
+      });
+    } else {
+      console.warn('[pdfService] pdf-buffer-empty', {
+        receipt: receipt?.receipt_number,
+      });
+    }
+  } finally {
+    await page.close().catch(() => {});
+  }
+
+  return {
+    pdfPath: targetPath,
+    pdfBuffer,
+    html,
+  };
+};
+
 module.exports = {
   generateInvoicePdf,
+  generateReceiptPdf,
 };

@@ -25,6 +25,7 @@ import {
   Alert,
   Snackbar,
 } from '@mui/material';
+import SendIcon from '@mui/icons-material/Send';
 import Autocomplete from '@mui/material/Autocomplete';
 import { makeStyles } from '@mui/styles';
 import apiClient from '../../utils/apiClient';
@@ -140,6 +141,7 @@ const Payments = ({ userData }) => {
   const [invoicesLoading, setInvoicesLoading] = useState(true);
   const [invoiceError, setInvoiceError] = useState('');
   const [editingPayment, setEditingPayment] = useState(null);
+  const [sendingReceiptFor, setSendingReceiptFor] = useState(null);
   const [deleteDialog, setDeleteDialog] = useState({
     open: false,
     payment: null,
@@ -370,8 +372,38 @@ const Payments = ({ userData }) => {
     }
   };
 
+  const handleSendReceipt = async (payment) => {
+    if (!payment?.payment_id) {
+      return;
+    }
+    setSendingReceiptFor(payment.payment_id);
+    try {
+      const response = await apiClient.post(`/api/receipts/by-payment/${payment.payment_id}/send`);
+      if (response.data?.success) {
+        setToast({ message: response.data?.message || 'Receipt emailed successfully', severity: 'success' });
+      } else {
+        setToast({ message: response.data?.message || 'Unable to send receipt email', severity: 'error' });
+      }
+      await fetchPayments();
+    } catch (err) {
+      console.error('Failed to send receipt', err);
+      setToast({ message: err?.response?.data?.message || 'Failed to send receipt', severity: 'error' });
+    } finally {
+      setSendingReceiptFor(null);
+    }
+  };
+
   const renderRowActions = (row) => (
     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+      <Button
+        size="small"
+        variant="outlined"
+        startIcon={sendingReceiptFor === row.payment_id ? <CircularProgress size={14} /> : <SendIcon />}
+        onClick={() => handleSendReceipt(row)}
+        disabled={sendingReceiptFor === row.payment_id}
+      >
+        {sendingReceiptFor === row.payment_id ? 'Sending...' : 'Send Receipt'}
+      </Button>
       <Button size="small" variant="outlined" onClick={() => handleEditPayment(row)}>
         Edit
       </Button>

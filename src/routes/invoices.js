@@ -11,6 +11,7 @@ const { recordAuditEvent } = require('../utils/audit');
 const { generateInvoicePdf } = require('../services/pdfService');
 const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
+const { ensureReceiptForPayment } = require('../services/receiptService');
 const { buildInvoiceDeliveryEmail } = require('../templates/email/invoiceDeliveryEmail');
 const { calculateTotals, refreshInvoiceWithPayments } = require('../utils/invoices');
 const { buildPatientScopeQuery, userCanAccessPatient } = require('../utils/accessControl');
@@ -934,6 +935,16 @@ router.post(
         invoice.paid_at = invoice.paid_at || new Date();
       }
       await invoice.save();
+
+      try {
+        await ensureReceiptForPayment({
+          payment,
+          invoice,
+          actorId: req.user.id,
+        });
+      } catch (receiptError) {
+        console.error('Failed to create receipt for invoice payment', receiptError);
+      }
 
       await recordAuditEvent({
         event: 'invoice.markPaid',

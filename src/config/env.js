@@ -127,6 +127,8 @@ module.exports = {
   defaultFromEmail: process.env.EMAIL_FROM_ADDRESS || 'no-reply@bridgesphysio.com',
   invoiceStoragePath: process.env.INVOICE_STORAGE_PATH
     || path.join(storageRoot, 'invoices'),
+  receiptStoragePath: process.env.RECEIPT_STORAGE_PATH
+    || path.join(storageRoot, 'receipts'),
   pdfTempPath: process.env.PDF_TEMP_PATH
     || path.join(storageRoot, 'tmp'),
   chromiumRemoteExecutable: process.env.CHROMIUM_REMOTE_EXEC_PATH || '',

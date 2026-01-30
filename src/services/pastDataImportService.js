@@ -8,6 +8,7 @@ const Counter = require('../models/counter');
 const { calculateTotals, refreshInvoiceWithPayments } = require('../utils/invoices');
 const { generateInvoicePdf } = require('./pdfService');
 const { getLatestClinicSettings } = require('./clinicSettingsService');
+const { ensureReceiptForPayment } = require('./receiptService');
 const { toPlainObject } = require('../utils/mongoose');
 
 const normalizeName = (value) => {
@@ -454,7 +455,7 @@ const importPastDataRows = async ({
 
       if (row.payment > 0) {
         const paymentId = await Counter.next('payment_id', 1);
-        await Payment.create({
+        const paymentDoc = await Payment.create({
           payment_id: paymentId,
           invoice_id: invoice.invoice_id,
           invoice_number: invoice.invoice_number,
@@ -469,6 +470,21 @@ const importPastDataRows = async ({
           recordedBy: actorId || actorDoc?._id,
         });
         summary.paymentsCreated += 1;
+
+        try {
+          await ensureReceiptForPayment({
+            payment: paymentDoc,
+            invoice,
+            patient: patientDoc,
+            actorId: actorId || actorDoc?._id,
+            clinicSettings,
+          });
+        } catch (receiptError) {
+          console.error('[importPastData] Failed to create receipt', {
+            payment: paymentId,
+            error: receiptError?.message,
+          });
+        }
       }
 
       await refreshInvoiceWithPayments(invoice);

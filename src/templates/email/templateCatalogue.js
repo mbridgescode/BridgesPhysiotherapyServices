@@ -1,5 +1,6 @@
 const { buildBookingConfirmationEmail } = require('./bookingConfirmationEmail');
 const { buildInvoiceDeliveryEmail, buildCancellationFeeInvoiceEmail } = require('./invoiceDeliveryEmail');
+const { buildReceiptDeliveryEmail } = require('./receiptDeliveryEmail');
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -106,6 +107,44 @@ const createSampleInvoiceContext = ({
   };
 };
 
+const createSampleReceiptContext = ({
+  receiptNumber = 'RCT-TEST-2001',
+  amountPaid = 120,
+} = {}) => {
+  const context = createSampleInvoiceContext({
+    invoiceNumber: 'INV-TEST-1003',
+    amount: amountPaid,
+  });
+  const paymentDate = new Date();
+  return {
+    receipt: {
+      receipt_id: 88001,
+      receipt_number: receiptNumber,
+      payment_id: 77001,
+      invoice_number: context.invoice.invoice_number,
+      patient_id: context.patient.patient_id,
+      amount_paid: amountPaid,
+      currency: context.invoice.currency,
+      payment_date: paymentDate,
+      receipt_date: paymentDate,
+      method: 'card',
+      reference: 'POS-12345',
+      line_items: context.invoice.line_items,
+      subtotal: context.invoice.subtotal,
+      total_due: context.invoice.total_due,
+      balance_due: 0,
+      patient_name: context.invoice.patient_name,
+      patient_email: context.invoice.patient_email,
+      patient_phone: context.invoice.patient_phone,
+      billing_contact_name: context.billingContact.name,
+      billing_contact_email: context.billingContact.email,
+      billing_contact_phone: context.billingContact.phone,
+    },
+    patient: context.patient,
+    billingContact: context.billingContact,
+  };
+};
+
 const buildBookingConfirmationTestEmail = ({ clinicSettings }) => {
   const patient = createSamplePatient();
   const appointments = createSampleAppointments();
@@ -205,6 +244,27 @@ const buildCancellationFeeTestEmail = ({ clinicSettings }) => {
   };
 };
 
+const buildReceiptDeliveryTestEmail = ({ clinicSettings }) => {
+  const context = createSampleReceiptContext({
+    receiptNumber: 'RCT-TEST-2001',
+    amountPaid: 120,
+  });
+  const content = buildReceiptDeliveryEmail({
+    receipt: context.receipt,
+    billingContact: context.billingContact,
+    clinicSettings,
+    patient: context.patient,
+  });
+  return {
+    subject: content.subject,
+    html: content.html,
+    text: content.text,
+    metadata: {
+      receipt_number: context.receipt.receipt_number,
+    },
+  };
+};
+
 const EMAIL_TEMPLATE_DEFINITIONS = [
   {
     id: 'booking_confirmation',
@@ -229,6 +289,12 @@ const EMAIL_TEMPLATE_DEFINITIONS = [
     label: 'Cancellation fee invoice',
     description: 'Sent when a same-day cancellation fee is applied.',
     build: buildCancellationFeeTestEmail,
+  },
+  {
+    id: 'receipt_delivery',
+    label: 'Payment receipt',
+    description: 'Sent after recording a payment (PDF receipt attached in production).',
+    build: buildReceiptDeliveryTestEmail,
   },
 ];
 
