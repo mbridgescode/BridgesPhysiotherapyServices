@@ -25,6 +25,7 @@ import {
   Alert,
   Snackbar,
   IconButton,
+  Chip,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -66,6 +67,16 @@ const formatCurrency = (amount, currency = 'GBP') => {
     currency,
     minimumFractionDigits: 2,
   }).format(parsed);
+};
+
+const formatReceiptStatus = (receiptSummary) => {
+  if (!receiptSummary) {
+    return { label: 'Pending', color: 'default' };
+  }
+  if ((receiptSummary.status || '').toLowerCase() === 'sent') {
+    return { label: 'Sent', color: 'success' };
+  }
+  return { label: 'Draft', color: 'warning' };
 };
 
 const defaultFormState = () => ({
@@ -554,6 +565,24 @@ const Payments = ({ userData }) => {
       },
     },
     {
+      id: 'receipt',
+      label: 'Receipt',
+      minWidth: 140,
+      render: (row) => {
+        const status = formatReceiptStatus(row.receipt_summary);
+        return (
+          <Box display="flex" flexDirection="column" gap={0.5}>
+            <Chip size="small" label={status.label} color={status.color} variant="outlined" />
+            {row.receipt_summary?.receipt_number && (
+              <Typography variant="caption" color="text.secondary">
+                {row.receipt_summary.receipt_number}
+              </Typography>
+            )}
+          </Box>
+        );
+      },
+    },
+    {
       id: 'amount_paid',
       label: 'Amount',
       minWidth: 140,
@@ -601,6 +630,7 @@ const Payments = ({ userData }) => {
   const renderMobileCard = (row) => {
     const dateValue = row.payment_date ? new Date(row.payment_date) : null;
     const summary = row.invoice_summary || {};
+    const receiptStatus = formatReceiptStatus(row.receipt_summary);
     return (
       <Card variant="outlined" sx={{ backgroundColor: 'rgba(15,23,42,0.6)' }}>
         <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -618,6 +648,14 @@ const Payments = ({ userData }) => {
           <Typography variant="body2" color="text.secondary">
             {summary.patient_name || (row.patient_id ? `Patient #${row.patient_id}` : '--')}
           </Typography>
+          <Box display="flex" gap={1} alignItems="center">
+            <Chip size="small" label={`Receipt ${receiptStatus.label}`} color={receiptStatus.color} variant="outlined" />
+            {row.receipt_summary?.receipt_number && (
+              <Typography variant="caption" color="text.secondary">
+                {row.receipt_summary.receipt_number}
+              </Typography>
+            )}
+          </Box>
           {row.reference && (
             <Typography variant="body2">Ref: {row.reference}</Typography>
           )}
