@@ -186,6 +186,19 @@ const formatAddressLines = (value) => {
   return [];
 };
 
+const resolvePatientName = (invoice = {}, patient = {}) => {
+  const fullName = [patient?.first_name, patient?.surname]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  return fullName
+    || invoice?.patient_name
+    || patient?.preferred_name
+    || (patient?.patient_id ? `Patient ${patient.patient_id}` : '')
+    || 'Valued Patient';
+};
+
 const normalizePaymentInstructionLines = (clinicSettings = {}, invoice = null) => {
   const instructions = clinicSettings?.payment_instructions;
   if (instructions?.text) {
@@ -280,10 +293,10 @@ const renderInvoiceTemplate = ({
   const totals = buildTotals(invoice);
   const clinicName = branding.clinic_name || 'Bridges Physiotherapy Services';
   const logoSrc = branding.logo_url ? escapeHtml(branding.logo_url) : DEFAULT_LOGO_DATA_URI;
+  const patientName = resolvePatientName(invoice, patient);
   const billingName = billingContact?.name
     || invoice?.billing_contact_name
-    || patient?.preferred_name
-    || invoice?.patient_name
+    || patientName
     || 'Valued Client';
   const billingEmail = billingContact?.email
     || invoice?.billing_contact_email
@@ -458,6 +471,9 @@ const renderInvoiceTemplate = ({
       }
 
       .info-band {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 40px;
         padding: 20px 56px;
         border-top: 1px solid #e2e8f0;
         border-bottom: 1px solid #e2e8f0;
@@ -465,6 +481,7 @@ const renderInvoiceTemplate = ({
       }
 
       .info-block {
+        flex: 1 1 280px;
         max-width: 420px;
       }
 
@@ -666,6 +683,12 @@ const renderInvoiceTemplate = ({
         </section>
 
         <section class='info-band'>
+          <div class='info-block'>
+            <div class='info-title'>Patient / Client</div>
+            <div class='info-text'>
+              <strong>${escapeHtml(patientName)}</strong>
+            </div>
+          </div>
           <div class='info-block'>
             <div class='info-title'>Bill To</div>
             <div class='info-text'>
