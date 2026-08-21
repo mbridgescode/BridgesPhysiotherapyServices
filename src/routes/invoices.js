@@ -8,7 +8,7 @@ const Counter = require('../models/counter');
 const Payment = require('../models/payments');
 const { authenticate, authorize } = require('../middleware/auth');
 const { recordAuditEvent } = require('../utils/audit');
-const { generateInvoicePdf } = require('../services/pdfService');
+const { generateInvoicePdf, generatePaymentSummaryPdf } = require('../services/pdfService');
 const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
 const { ensureReceiptForPayment } = require('../services/receiptService');
@@ -16,6 +16,10 @@ const { buildInvoiceDeliveryEmail } = require('../templates/email/invoiceDeliver
 const { calculateTotals, refreshInvoiceWithPayments } = require('../utils/invoices');
 const { buildPatientScopeQuery, userCanAccessPatient } = require('../utils/accessControl');
 const { toPlainObject } = require('../utils/mongoose');
+const {
+  buildPaymentSummaryOptions,
+  buildSelectedPaymentSummary,
+} = require('../services/paymentSummaryService');
 
 const router = express.Router();
 
@@ -81,6 +85,54 @@ const collectAppointmentIds = (primaryValue, listValue) => {
 };
 
 const resolveSettings = async () => getLatestClinicSettings();
+
+const normalizePatientId = (value) => {
+  const numeric = Number(value);
+  return Number.isNaN(numeric) ? null : numeric;
+};
+
+const userCanAccessPatientFinancials = async (patientId, user) => {
+  if (user?.role === 'admin') {
+    return true;
+  }
+
+  const [patientDoc, ownedInvoice] = await Promise.all([
+    Patient.findOne({ patient_id: patientId }).select(
+      'patient_id primary_therapist_id primaryTherapist createdBy',
+    ),
+    Invoice.findOne({ patient_id: patientId, createdBy: user?.id }).select('_id'),
+  ]);
+
+  if (!patientDoc) {
+    return false;
+  }
+
+  return userCanAccessPatient(toPlainObject(patientDoc), user) || Boolean(ownedInvoice);
+};
+
+const sanitizeFilenamePart = (value, fallback) => {
+  const normalized = String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return normalized || fallback;
+};
+
+const formatFilenameDate = (value) => {
+  if (!value) {
+    return 'unknown';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'unknown';
+  }
+  return [
+    String(date.getDate()).padStart(2, '0'),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    date.getFullYear(),
+  ].join('-');
+};
 
 const nextInvoiceIdentifiers = async (settings) => {
   const [invoiceNumberSeq, invoiceIdSeq] = await Promise.all([
@@ -372,6 +424,105 @@ router.get(
       });
     } catch (error) {
       next(error);
+    }
+  },
+);
+
+router.get(
+  '/patients/:patientId/payment-summary-options',
+  authenticate,
+  authorize('admin', 'receptionist', 'therapist'),
+  async (req, res, next) => {
+    try {
+      const patientId = normalizePatientId(req.params.patientId);
+      if (!patientId) {
+        return res.status(400).json({ success: false, message: 'Invalid patient id' });
+      }
+
+      const patientDoc = await Patient.findOne({ patient_id: patientId }).select('patient_id');
+      if (!patientDoc) {
+        return res.status(404).json({ success: false, message: 'Patient not found' });
+      }
+
+      if (!(await userCanAccessPatientFinancials(patientId, req.user))) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
+      const summary = await buildPaymentSummaryOptions({ patientId });
+      return res.json({
+        success: true,
+        patient: summary.patient,
+        billingContact: summary.billingContact
+          ? { name: summary.billingContact.name }
+          : null,
+        entries: summary.entries,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
+
+router.post(
+  '/patients/:patientId/payment-summary',
+  authenticate,
+  authorize('admin', 'receptionist', 'therapist'),
+  async (req, res, next) => {
+    try {
+      const patientId = normalizePatientId(req.params.patientId);
+      if (!patientId) {
+        return res.status(400).json({ success: false, message: 'Invalid patient id' });
+      }
+
+      const patientDoc = await Patient.findOne({ patient_id: patientId }).select('patient_id');
+      if (!patientDoc) {
+        return res.status(404).json({ success: false, message: 'Patient not found' });
+      }
+
+      if (!(await userCanAccessPatientFinancials(patientId, req.user))) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+
+      const summary = await buildSelectedPaymentSummary({
+        patientId,
+        entryIds: req.body?.entry_ids,
+      });
+      if (summary.error) {
+        return res.status(400).json({ success: false, message: summary.error });
+      }
+
+      const settings = await resolveSettings();
+      const { pdfBuffer } = await generatePaymentSummaryPdf({
+        summary,
+        clinicSettings: settings,
+      });
+      if (!pdfBuffer?.length) {
+        return res.status(500).json({ success: false, message: 'Unable to generate payment summary PDF' });
+      }
+
+      const selectedEntries = summary.selectedEntries || summary.entries || [];
+      const firstDate = selectedEntries[0]?.session_date;
+      const lastDate = selectedEntries[selectedEntries.length - 1]?.session_date;
+      const patientName = sanitizeFilenamePart(summary.patient?.name, `Patient_${patientId}`);
+      const filename = `${patientName}_Payment_Summary_${formatFilenameDate(firstDate)}_to_${formatFilenameDate(lastDate)}.pdf`;
+
+      await recordAuditEvent({
+        event: 'paymentSummary.generate',
+        success: true,
+        actorId: req.user.id,
+        actorRole: req.user.role,
+        metadata: {
+          patient_id: patientId.toString(),
+          session_count: selectedEntries.length.toString(),
+          total_amount_paid: String(summary.totalAmountPaid),
+        },
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(pdfBuffer);
+    } catch (error) {
+      return next(error);
     }
   },
 );
@@ -1063,3 +1214,4 @@ router.patch(
 );
 
 module.exports = router;
+

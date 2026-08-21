@@ -26,6 +26,7 @@ const {
 } = require('../config/env');
 const { renderTemplidInvoice } = require('../templates/invoice/templidInvoice');
 const { renderTemplidReceipt } = require('../templates/receipt/templidReceipt');
+const { renderPaymentSummaryTemplate } = require('../templates/paymentSummaryTemplate');
 
 const ensureDirectory = (dirPath) => {
   if (!dirPath) {
@@ -482,7 +483,43 @@ const generateReceiptPdf = async ({ receipt, clinicSettings }) => {
   };
 };
 
+const generatePaymentSummaryPdf = async ({ summary, clinicSettings }) => {
+  const html = renderPaymentSummaryTemplate({
+    summary,
+    clinicSettings,
+    includeWrapper: true,
+  });
+
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  let pdfBuffer;
+
+  try {
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    await waitForFonts(page);
+    await waitForContent(page);
+    await page.emulateMediaType('screen');
+    pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '16mm',
+        right: '12mm',
+        bottom: '16mm',
+        left: '12mm',
+      },
+    });
+    pdfBuffer = normalizeToBuffer(pdfBuffer, 'page.pdf()');
+  } finally {
+    await page.close().catch(() => {});
+  }
+
+  return { pdfBuffer, html };
+};
+
 module.exports = {
   generateInvoicePdf,
   generateReceiptPdf,
+  generatePaymentSummaryPdf,
 };
+

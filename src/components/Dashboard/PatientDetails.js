@@ -26,6 +26,14 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Checkbox,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import { makeStyles } from '@mui/styles';
@@ -99,6 +107,18 @@ const createEmptyFormState = () => ({
 
 const currencyDisplay = (value, currency = 'GBP') => `${currency} ${Number(value || 0).toFixed(2)}`;
 
+const paymentSummaryDateDisplay = (value) => {
+  if (!value) {
+    return '-';
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('en-GB');
+};
+
+const paymentSummaryAmountDisplay = (value, currency = 'GBP') => (
+  `${currency} ${Number(value || 0).toFixed(2)}`
+);
+
 const PatientDetails = () => {
   const classes = useStyles();
   const { id } = useParams();
@@ -139,6 +159,16 @@ const PatientDetails = () => {
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState('');
   const [exportError, setExportError] = useState('');
+  const [paymentSummaryDialog, setPaymentSummaryDialog] = useState({
+    open: false,
+    loading: false,
+    entries: [],
+    patient: null,
+    billingContact: null,
+    error: '',
+  });
+  const [selectedPaymentSummaryEntries, setSelectedPaymentSummaryEntries] = useState([]);
+  const [generatingPaymentSummary, setGeneratingPaymentSummary] = useState(false);
   const [formState, setFormState] = useState(() => createEmptyFormState());
   const [formErrors, setFormErrors] = useState({});
   const [savingPatient, setSavingPatient] = useState(false);
@@ -154,6 +184,7 @@ const PatientDetails = () => {
   const notes = details?.notes || [];
   const communications = details?.communications || [];
   const canExportPatient = userData?.role === 'admin';
+  const canGeneratePaymentSummary = ['admin', 'therapist', 'receptionist'].includes(userData?.role);
   const {
     templates: noteTemplates,
     loading: templatesLoading,
@@ -221,6 +252,16 @@ const PatientDetails = () => {
     return 'Patient';
   }, [formState, patient]);
 
+  const eligiblePaymentSummaryEntries = useMemo(
+    () => paymentSummaryDialog.entries.filter((entry) => entry.eligible),
+    [paymentSummaryDialog.entries],
+  );
+
+  const allPaidPaymentSummaryEntriesSelected = eligiblePaymentSummaryEntries.length > 0
+    && eligiblePaymentSummaryEntries.every(
+      (entry) => selectedPaymentSummaryEntries.includes(entry.entry_id),
+    );
+
   const nextAppointment = useMemo(() => {
     if (!treatments.length) {
       return null;
@@ -277,6 +318,108 @@ const PatientDetails = () => {
       setError('Unable to load patient details.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openPaymentSummaryDialog = async () => {
+    if (!patient || !canGeneratePaymentSummary) {
+      return;
+    }
+
+    setSelectedPaymentSummaryEntries([]);
+    setPaymentSummaryDialog((prev) => ({
+      ...prev,
+      open: true,
+      loading: true,
+      entries: [],
+      patient: null,
+      billingContact: null,
+      error: '',
+    }));
+
+    try {
+      const response = await apiClient.get(
+        `/api/invoices/patients/${patient.patient_id}/payment-summary-options`,
+      );
+      setPaymentSummaryDialog({
+        open: true,
+        loading: false,
+        entries: response.data?.entries || [],
+        patient: response.data?.patient || null,
+        billingContact: response.data?.billingContact || null,
+        error: '',
+      });
+    } catch (err) {
+      console.error('Failed to load payment summary options', err);
+      setPaymentSummaryDialog((prev) => ({
+        ...prev,
+        loading: false,
+        error: err?.response?.data?.message || 'Unable to load paid treatment history.',
+      }));
+    }
+  };
+
+  const closePaymentSummaryDialog = () => {
+    if (generatingPaymentSummary) {
+      return;
+    }
+    setPaymentSummaryDialog((prev) => ({ ...prev, open: false }));
+    setSelectedPaymentSummaryEntries([]);
+  };
+
+  const togglePaymentSummaryEntry = (entryId) => {
+    setSelectedPaymentSummaryEntries((previous) => (
+      previous.includes(entryId)
+        ? previous.filter((idValue) => idValue !== entryId)
+        : [...previous, entryId]
+    ));
+  };
+
+  const handleGeneratePaymentSummary = async () => {
+    if (!patient || selectedPaymentSummaryEntries.length === 0) {
+      setPaymentSummaryDialog((prev) => ({
+        ...prev,
+        error: 'Select at least one paid treatment session.',
+      }));
+      return;
+    }
+
+    setGeneratingPaymentSummary(true);
+    try {
+      const response = await apiClient.post(
+        `/api/invoices/patients/${patient.patient_id}/payment-summary`,
+        { entry_ids: selectedPaymentSummaryEntries },
+        { responseType: 'arraybuffer' },
+      );
+      const contentDisposition = response.headers?.['content-disposition'] || '';
+      const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+      const filename = filenameMatch?.[1] || 'Payment_Summary.pdf';
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setPaymentSummaryDialog((prev) => ({ ...prev, open: false }));
+      setSelectedPaymentSummaryEntries([]);
+      setPatientToast({ message: 'Payment Summary PDF downloaded.', severity: 'success' });
+    } catch (err) {
+      console.error('Failed to generate payment summary', err);
+      let message = err?.response?.data?.message || 'Unable to generate Payment Summary PDF.';
+      if (err?.response?.data instanceof ArrayBuffer) {
+        try {
+          const decoded = JSON.parse(new TextDecoder().decode(err.response.data));
+          message = decoded.message || message;
+        } catch (decodeError) {
+          // Keep the user-facing fallback message when the error payload is not JSON.
+        }
+      }
+      setPaymentSummaryDialog((prev) => ({ ...prev, error: message }));
+    } finally {
+      setGeneratingPaymentSummary(false);
     }
   };
 
@@ -1459,6 +1602,144 @@ const PatientDetails = () => {
         </CardContent>
       </Card>
 
+      <Dialog
+        open={paymentSummaryDialog.open}
+        onClose={closePaymentSummaryDialog}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>Generate Payment Summary</DialogTitle>
+        <DialogContent dividers>
+          {paymentSummaryDialog.loading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <>
+              <Box mb={2}>
+                <Typography variant="subtitle1" fontWeight={600}>
+                  Patient: {paymentSummaryDialog.patient?.name || patientDisplayName}
+                </Typography>
+                {paymentSummaryDialog.billingContact?.name && (
+                  <Typography variant="body2" color="text.secondary">
+                    Billing contact: {paymentSummaryDialog.billingContact.name}
+                  </Typography>
+                )}
+              </Box>
+              {paymentSummaryDialog.error && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {paymentSummaryDialog.error}
+                </Alert>
+              )}
+              {!paymentSummaryDialog.error && paymentSummaryDialog.entries.length === 0 && (
+                <Alert severity="info">
+                  No treatment sessions with invoice records are available for this patient.
+                </Alert>
+              )}
+              {paymentSummaryDialog.entries.length > 0 && (
+                <>
+                  <Box display="flex" gap={1} flexWrap="wrap" mb={1.5}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => setSelectedPaymentSummaryEntries(
+                        eligiblePaymentSummaryEntries.map((entry) => entry.entry_id),
+                      )}
+                      disabled={eligiblePaymentSummaryEntries.length === 0 || generatingPaymentSummary}
+                    >
+                      Select all paid
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => setSelectedPaymentSummaryEntries([])}
+                      disabled={selectedPaymentSummaryEntries.length === 0 || generatingPaymentSummary}
+                    >
+                      Deselect all
+                    </Button>
+                    {allPaidPaymentSummaryEntriesSelected && (
+                      <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                        All paid sessions selected
+                      </Typography>
+                    )}
+                  </Box>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small" aria-label="Payment Summary treatment history">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell padding="checkbox" />
+                          <TableCell>Session Date</TableCell>
+                          <TableCell>Treatment / Service</TableCell>
+                          <TableCell>Invoice Number</TableCell>
+                          <TableCell align="right">Amount Paid</TableCell>
+                          <TableCell>Payment Status</TableCell>
+                          <TableCell>Payment Date</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {paymentSummaryDialog.entries.map((entry) => {
+                          const paymentDates = Array.isArray(entry.payment_dates)
+                            ? entry.payment_dates
+                            : (entry.payment_date ? [entry.payment_date] : []);
+                          return (
+                            <TableRow key={entry.entry_id} hover>
+                              <TableCell padding="checkbox">
+                                <Checkbox
+                                  checked={selectedPaymentSummaryEntries.includes(entry.entry_id)}
+                                  onChange={() => togglePaymentSummaryEntry(entry.entry_id)}
+                                  disabled={!entry.eligible || generatingPaymentSummary}
+                                  inputProps={{
+                                    'aria-label': `Select ${entry.treatment_description || 'treatment session'}`,
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell>{paymentSummaryDateDisplay(entry.session_date)}</TableCell>
+                              <TableCell>{entry.treatment_description || '-'}</TableCell>
+                              <TableCell>{entry.invoice_number || '-'}</TableCell>
+                              <TableCell align="right">
+                                {paymentSummaryAmountDisplay(entry.amount_paid, entry.currency)}
+                              </TableCell>
+                              <TableCell>{entry.payment_status || 'Outstanding'}</TableCell>
+                              <TableCell>
+                                {paymentDates.length > 0
+                                  ? paymentDates.map(paymentSummaryDateDisplay).join(', ')
+                                  : '-'}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  {eligiblePaymentSummaryEntries.length === 0 && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      No paid treatment sessions are available to select. Outstanding, voided and unpaid
+                      records cannot be included.
+                    </Alert>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePaymentSummaryDialog} disabled={generatingPaymentSummary} sx={{ color: '#fff' }}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleGeneratePaymentSummary}
+            variant="contained"
+            disabled={
+              paymentSummaryDialog.loading
+              || generatingPaymentSummary
+              || selectedPaymentSummaryEntries.length === 0
+            }
+          >
+            {generatingPaymentSummary ? 'Generating...' : 'Generate Payment Summary'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Card className={classes.section}>
         <CardContent>
           <Typography variant="h6">Treatment Notes</Typography>
@@ -1631,7 +1912,18 @@ const PatientDetails = () => {
 
       <Card className={classes.section}>
         <CardContent>
-          <Typography variant="h6">Invoices</Typography>
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+            <Typography variant="h6">Invoices</Typography>
+            {canGeneratePaymentSummary && (
+              <Button
+                variant="outlined"
+                onClick={openPaymentSummaryDialog}
+                disabled={paymentSummaryDialog.loading}
+              >
+                Generate Payment Summary
+              </Button>
+            )}
+          </Box>
           <Divider sx={{ my: 2 }} />
           <Box className={classes.tableContainer}>
             <DataTable
@@ -1667,3 +1959,4 @@ const PatientDetails = () => {
 };
 
 export default PatientDetails;
+
