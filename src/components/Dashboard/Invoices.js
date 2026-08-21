@@ -904,6 +904,8 @@ const Invoices = ({ userData }) => {
               maxHeight="100%"
               containerSx={{ height: '100%', flex: 1, minHeight: 0, width: '100%' }}
               emptyMessage="No invoices to display."
+              defaultOrderBy="invoice_number"
+              defaultOrder="desc"
             />
           </Box>
         </CardContent>
