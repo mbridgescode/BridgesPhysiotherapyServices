@@ -42,3 +42,5 @@ apply_validators_commands.json
 
 # Generated Chromium bundle
 public/chromium-pack.tar
+
+.vercel

@@ -240,4 +240,3 @@ const renderPaymentSummaryTemplate = ({
 };
 
 module.exports = { renderPaymentSummaryTemplate };
-

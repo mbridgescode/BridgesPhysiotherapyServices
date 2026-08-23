@@ -186,17 +186,22 @@ const formatAddressLines = (value) => {
   return [];
 };
 
-const resolvePatientName = (invoice = {}, patient = {}) => {
-  const fullName = [patient?.first_name, patient?.surname]
+const normalizePersonName = (value) => String(value || '')
+  .trim()
+  .toLocaleLowerCase()
+  .replace(/\s+/g, ' ');
+
+const resolvePatientName = (invoice, patient) => {
+  const explicitName = invoice?.patient_name || patient?.patient_name;
+  if (explicitName) {
+    return String(explicitName).trim();
+  }
+
+  const composedName = [patient?.first_name, patient?.surname]
     .filter(Boolean)
     .join(' ')
     .trim();
-
-  return fullName
-    || invoice?.patient_name
-    || patient?.preferred_name
-    || (patient?.patient_id ? `Patient ${patient.patient_id}` : '')
-    || 'Valued Patient';
+  return composedName || patient?.preferred_name || '';
 };
 
 const normalizePaymentInstructionLines = (clinicSettings = {}, invoice = null) => {
@@ -293,10 +298,10 @@ const renderInvoiceTemplate = ({
   const totals = buildTotals(invoice);
   const clinicName = branding.clinic_name || 'Bridges Physiotherapy Services';
   const logoSrc = branding.logo_url ? escapeHtml(branding.logo_url) : DEFAULT_LOGO_DATA_URI;
-  const patientName = resolvePatientName(invoice, patient);
   const billingName = billingContact?.name
     || invoice?.billing_contact_name
-    || patientName
+    || patient?.preferred_name
+    || invoice?.patient_name
     || 'Valued Client';
   const billingEmail = billingContact?.email
     || invoice?.billing_contact_email
@@ -308,6 +313,9 @@ const renderInvoiceTemplate = ({
     || patient?.phone
     || invoice?.patient_phone
     || '';
+  const patientName = resolvePatientName(invoice, patient);
+  const patientIsBillTo = !patientName
+    || normalizePersonName(patientName) === normalizePersonName(billingName);
   const invoiceDate = formatDate(invoice?.issue_date || new Date());
   const dueDate = formatDate(invoice?.due_date);
   const invoiceNumber = escapeHtml(invoice?.invoice_number || '');
@@ -329,6 +337,13 @@ const renderInvoiceTemplate = ({
     clientId ? `Client ID: ${escapeHtml(String(clientId))}` : null,
   ].filter(Boolean);
   const billToHtml = billToParts.join('<br />');
+  const patientHtml = !patientIsBillTo
+    ? `
+            <div class='info-entry'>
+              <div class='info-title'>Patient</div>
+              <div class='info-text'>${escapeHtml(patientName)}</div>
+            </div>`
+    : '';
   const paymentInstructionsHtml = buildPaymentInstructions({
     clinicSettings,
     invoice,
@@ -471,9 +486,6 @@ const renderInvoiceTemplate = ({
       }
 
       .info-band {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 40px;
         padding: 20px 56px;
         border-top: 1px solid #e2e8f0;
         border-bottom: 1px solid #e2e8f0;
@@ -481,8 +493,11 @@ const renderInvoiceTemplate = ({
       }
 
       .info-block {
-        flex: 1 1 280px;
         max-width: 420px;
+      }
+
+      .info-entry + .info-entry {
+        margin-top: 16px;
       }
 
       .info-title {
@@ -684,15 +699,12 @@ const renderInvoiceTemplate = ({
 
         <section class='info-band'>
           <div class='info-block'>
-            <div class='info-title'>Patient / Client</div>
-            <div class='info-text'>
-              <strong>${escapeHtml(patientName)}</strong>
-            </div>
-          </div>
-          <div class='info-block'>
-            <div class='info-title'>Bill To</div>
-            <div class='info-text'>
-              ${billToHtml}
+            ${patientHtml}
+            <div class='info-entry'>
+              <div class='info-title'>Bill To</div>
+              <div class='info-text'>
+                ${billToHtml}
+              </div>
             </div>
           </div>
         </section>
@@ -759,6 +771,8 @@ module.exports = {
   normalizePaymentInstructionLines,
   formatCurrency,
   formatLongDate,
+  escapeHtml,
+  getDefaultLogoDataUri: () => DEFAULT_LOGO_DATA_URI,
 };
 const DEFAULT_LOGO_SVG = `<svg width="320" height="90" viewBox="0 0 320 90" xmlns="http://www.w3.org/2000/svg">
   <path d="M10 70 Q50 15 90 70" stroke="#1F3E82" stroke-width="12" stroke-linecap="round" fill="none"/>

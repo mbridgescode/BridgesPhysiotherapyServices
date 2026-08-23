@@ -522,4 +522,3 @@ module.exports = {
   generateReceiptPdf,
   generatePaymentSummaryPdf,
 };
-

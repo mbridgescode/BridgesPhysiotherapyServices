@@ -345,4 +345,3 @@ module.exports = {
   buildSelectedPaymentSummary,
   buildPatientDisplayName,
 };
-
