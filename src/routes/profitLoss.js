@@ -1,5 +1,4 @@
 const express = require('express');
-const exceljs = require('exceljs');
 const ProfitLossEntry = require('../models/profitLossEntry');
 const Invoice = require('../models/invoices');
 const Patient = require('../models/patients');
@@ -8,6 +7,10 @@ const { recordAuditEvent } = require('../utils/audit');
 const { buildPatientScopeQuery } = require('../utils/accessControl');
 
 const router = express.Router();
+
+// XLSX generation is only used by the export endpoint. Defer the relatively
+// heavy spreadsheet library for the normal profit/loss data request.
+const getExcelJs = () => require('exceljs');
 
 const allowedRoles = ['admin'];
 
@@ -367,7 +370,8 @@ router.get(
         return res.send([header, ...csvLines].join('\n'));
       }
 
-      const workbook = new exceljs.Workbook();
+      const ExcelJS = getExcelJs();
+      const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet('Profit & Loss');
       sheet.columns = [
         { header: 'Date', key: 'Date', width: 12 },

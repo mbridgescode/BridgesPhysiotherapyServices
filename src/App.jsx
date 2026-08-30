@@ -1,23 +1,29 @@
 // src/App.js
 
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { UserProvider } from './context/UserContext';
-import { AppointmentsProvider } from './context/AppointmentsContext';
-import Login from './components/Login';
-import ForgotPassword from './components/ForgotPassword';
-import ResetPassword from './components/ResetPassword';
-import Dashboard from './components/Dashboard/Dashboard';
 import PrivateRoute from './routes/PrivateRoute';
 import theme from './theme';
+
+const Login = lazy(() => import('./components/Login'));
+const ForgotPassword = lazy(() => import('./components/ForgotPassword'));
+const ResetPassword = lazy(() => import('./components/ResetPassword'));
+const Dashboard = lazy(() => import('./components/Dashboard/Dashboard'));
+
+const AppLoading = () => (
+  <div className="app-loading" aria-label="Loading application">
+    <div className="app-spinner" />
+  </div>
+);
 
 const App = () => {
   return (
     <ThemeProvider theme={theme}>
       <UserProvider>
-        <AppointmentsProvider>
-          <Router>
+        <Router>
+          <Suspense fallback={<AppLoading />}>
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -25,8 +31,8 @@ const App = () => {
               <Route path="/dashboard/*" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
               <Route path="/" element={<Navigate to="/login" replace />} />
             </Routes>
-          </Router>
-        </AppointmentsProvider>
+          </Suspense>
+        </Router>
       </UserProvider>
     </ThemeProvider>
   );

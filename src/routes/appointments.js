@@ -15,12 +15,15 @@ const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
 const { buildBookingConfirmationEmail } = require('../templates/email/bookingConfirmationEmail');
 const { buildInvoiceDeliveryEmail, buildCancellationFeeInvoiceEmail } = require('../templates/email/invoiceDeliveryEmail');
-const { generateInvoicePdf } = require('../services/pdfService');
 const { calculateTotals } = require('../utils/invoices');
 const { toPlainObject } = require('../utils/mongoose');
 const { buildRescheduleConfirmationEmail } = require('../templates/email/rescheduleConfirmationEmail');
 
 const router = express.Router();
+
+// PDF generation is only used when an appointment workflow creates an invoice.
+// Defer Chromium and Puppeteer initialization for ordinary appointment reads.
+const getPdfService = () => require('../services/pdfService');
 
 const normalizeAppointmentId = (value) => {
   const numeric = Number(value);
@@ -273,6 +276,7 @@ const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }
     billing_contact_phone: billingContact.phone,
   };
 
+  const { generateInvoicePdf } = getPdfService();
   const { pdfPath, pdfBuffer, html } = await generateInvoicePdf({
     invoice: invoiceForEmail,
     clinicSettings: settings,

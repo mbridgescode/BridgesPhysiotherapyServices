@@ -1,28 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useContext, useEffect, useState } from 'react';
 import { CalendarDays, Home as HomeIcon, Menu, MoreHorizontal, Users } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar, { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH } from '../Sidebar';
 import { Button } from '../../ui';
-import Home from './Home';
-import Schedule from './Schedule';
-import Settings from './Settings';
-import Reports from './Reports';
-import ProfitLoss from './ProfitLoss';
-import Patients from './Patients';
-import PatientDetails from './PatientDetails';
-import Invoices from './Invoices';
-import Payments from './Payments';
-import AuditLog from './AuditLog';
-import Admin from './Admin';
-import Communications from './Communications';
-import apiClient from '../../utils/apiClient';
+import { AppointmentsProvider } from '../../context/AppointmentsContext';
+import { UserContext } from '../../context/UserContext';
 import { emitAuthTokenChanged } from '../../utils/authEvents';
 import bpsLogo from '../../logo/BPS Logo.png';
 import WorkspaceNavigation from './WorkspaceNavigation';
 import { getNavigationItemForPath } from './navigation';
 
+const Home = lazy(() => import('./Home'));
+const Schedule = lazy(() => import('./Schedule'));
+const Settings = lazy(() => import('./Settings'));
+const Reports = lazy(() => import('./Reports'));
+const ProfitLoss = lazy(() => import('./ProfitLoss'));
+const Patients = lazy(() => import('./Patients'));
+const PatientDetails = lazy(() => import('./PatientDetails'));
+const Invoices = lazy(() => import('./Invoices'));
+const Payments = lazy(() => import('./Payments'));
+const AuditLog = lazy(() => import('./AuditLog'));
+const Admin = lazy(() => import('./Admin'));
+const Communications = lazy(() => import('./Communications'));
+
+const DashboardRouteLoading = () => (
+  <div className="app-loading app-loading--content" aria-label="Loading workspace">
+    <div className="app-spinner" />
+  </div>
+);
+
 const Dashboard = () => {
-  const [userData, setUserData] = useState(null);
+  const { userData, loading: userLoading, error: userError } = useContext(UserContext);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1200);
@@ -40,30 +48,23 @@ const Dashboard = () => {
   }, [isMobile]);
 
   useEffect(() => {
-    let active = true;
-    const fetchData = async () => {
-      try {
-        const userResponse = await apiClient.get('/api/users/me');
-        if (active) setUserData(userResponse.data.user);
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        emitAuthTokenChanged();
-        navigate('/login');
-      }
-    };
-    fetchData();
-    return () => { active = false; };
-  }, [navigate]);
+    if (!userLoading && userError) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      emitAuthTokenChanged();
+      navigate('/login');
+    }
+  }, [navigate, userError, userLoading]);
 
-  if (!userData) {
+  if (userLoading || !userData) {
     return <div className="app-loading" aria-label="Loading dashboard"><div className="app-spinner" /></div>;
   }
 
   const drawerWidth = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH);
   const greeting = userData?.name || userData?.username ? `Hi, ${userData.name || userData.username}` : 'Dashboard';
   const activeNavigationItem = getNavigationItemForPath(location.pathname, userData?.role);
+  const appointmentsEnabled = location.pathname === '/dashboard/appointments'
+    || location.pathname.startsWith('/dashboard/patients/');
   const isBottomActive = (path) => path === '/dashboard'
     ? location.pathname === '/dashboard'
     : location.pathname.startsWith(path);
@@ -98,27 +99,31 @@ const Dashboard = () => {
             </header>
           )}
           <WorkspaceNavigation userData={userData} />
-          <Routes>
-            <Route index element={<Home userData={userData} />} />
-            <Route path="appointments" element={<Schedule userData={userData} />} />
-            <Route path="patients" element={<Patients userData={userData} />} />
-            <Route path="patients/:id" element={<PatientDetails />} />
-            <Route path="invoices" element={<Invoices userData={userData} />} />
-            <Route path="payments" element={<Payments userData={userData} />} />
-            <Route path="reports" element={<Reports />} />
-            <Route path="profit-loss" element={<ProfitLoss />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="communications" element={<Communications />} />
-            <Route path="audit" element={<AuditLog />} />
-            <Route path="admin" element={<Admin />} />
-            <Route path="billing" element={<Navigate to="/dashboard/invoices" replace />} />
-            <Route path="insights" element={<Navigate to="/dashboard/reports" replace />} />
-            <Route
-              path="administration"
-              element={<Navigate to={userData.role === 'admin' ? '/dashboard/admin' : '/dashboard/settings'} replace />}
-            />
-            <Route path="*" element={<Navigate to="." replace />} />
-          </Routes>
+          <AppointmentsProvider enabled={appointmentsEnabled}>
+            <Suspense fallback={<DashboardRouteLoading />}>
+              <Routes>
+                <Route index element={<Home userData={userData} />} />
+                <Route path="appointments" element={<Schedule userData={userData} />} />
+                <Route path="patients" element={<Patients userData={userData} />} />
+                <Route path="patients/:id" element={<PatientDetails />} />
+                <Route path="invoices" element={<Invoices userData={userData} />} />
+                <Route path="payments" element={<Payments userData={userData} />} />
+                <Route path="reports" element={<Reports />} />
+                <Route path="profit-loss" element={<ProfitLoss />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="communications" element={<Communications />} />
+                <Route path="audit" element={<AuditLog />} />
+                <Route path="admin" element={<Admin />} />
+                <Route path="billing" element={<Navigate to="/dashboard/invoices" replace />} />
+                <Route path="insights" element={<Navigate to="/dashboard/reports" replace />} />
+                <Route
+                  path="administration"
+                  element={<Navigate to={userData.role === 'admin' ? '/dashboard/admin' : '/dashboard/settings'} replace />}
+                />
+                <Route path="*" element={<Navigate to="." replace />} />
+              </Routes>
+            </Suspense>
+          </AppointmentsProvider>
           {isMobile && (
             <nav className="app-mobile-bottom-nav" aria-label="Quick navigation">
               <button className={`app-mobile-bottom-nav__item ${isBottomActive('/dashboard') ? 'is-active' : ''}`} type="button" onClick={() => navigate('/dashboard')}>

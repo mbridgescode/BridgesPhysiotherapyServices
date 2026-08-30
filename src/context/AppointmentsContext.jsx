@@ -12,7 +12,7 @@ import {
 
 export const AppointmentsContext = createContext();
 
-export const AppointmentsProvider = ({ children }) => {
+export const AppointmentsProvider = ({ children, enabled = true }) => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -40,7 +40,7 @@ export const AppointmentsProvider = ({ children }) => {
   }, []);
 
   const fetchAppointments = useCallback(async (activeToken) => {
-    if (!activeToken) {
+    if (!enabled || !activeToken) {
       setAppointments([]);
       setError(null);
       setLoading(false);
@@ -61,7 +61,7 @@ export const AppointmentsProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     fetchAppointments(token);
