@@ -270,6 +270,9 @@ const DataTable = ({
   stickyHeader = true,
   defaultOrderBy,
   defaultOrder = 'asc',
+  sortBy,
+  sortOrder,
+  onSortChange,
   renderMobileCard,
   onRowClick,
 }) => {
@@ -289,12 +292,15 @@ const DataTable = ({
     return sortableFallback;
   }, [columns, defaultOrderBy, sortableFallback]);
 
-  const [orderBy, setOrderBy] = useState(resolvedInitialOrderBy);
-  const [order, setOrder] = useState(defaultOrder === 'desc' ? 'desc' : 'asc');
+  const [internalOrderBy, setInternalOrderBy] = useState(resolvedInitialOrderBy);
+  const [internalOrder, setInternalOrder] = useState(defaultOrder === 'desc' ? 'desc' : 'asc');
   const [filters, setFilters] = useState({});
 
+  const orderBy = sortBy ?? internalOrderBy;
+  const order = sortOrder === 'desc' || sortOrder === 'asc' ? sortOrder : internalOrder;
+
   useEffect(() => {
-    setOrderBy((prev) => {
+    setInternalOrderBy((prev) => {
       if (prev && columns.some((column) => column.id === prev && column.sortable !== false)) {
         return prev;
       }
@@ -303,7 +309,7 @@ const DataTable = ({
   }, [columns, resolvedInitialOrderBy]);
 
   useEffect(() => {
-    setOrder(defaultOrder === 'desc' ? 'desc' : 'asc');
+    setInternalOrder(defaultOrder === 'desc' ? 'desc' : 'asc');
   }, [defaultOrder]);
 
   useEffect(() => {
@@ -365,11 +371,19 @@ const DataTable = ({
     if (sortable === false) {
       return;
     }
-    if (orderBy === columnId) {
-      setOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setOrder('asc');
-      setOrderBy(columnId);
+    const nextOrder = orderBy === columnId
+      ? (order === 'asc' ? 'desc' : 'asc')
+      : 'asc';
+
+    if (onSortChange) {
+      onSortChange({ orderBy: columnId, order: nextOrder });
+    }
+
+    if (sortBy === undefined) {
+      setInternalOrderBy(columnId);
+    }
+    if (sortOrder === undefined) {
+      setInternalOrder(nextOrder);
     }
   };
 

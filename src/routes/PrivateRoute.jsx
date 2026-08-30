@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import apiClient from '../utils/apiClient';
 import { emitAuthTokenChanged } from '../utils/authEvents';
+import { LoadingState } from '../ui';
 
 const PrivateRoute = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(null);
@@ -41,7 +42,7 @@ const PrivateRoute = ({ children }) => {
   }, []);
 
   if (isAuthenticated === null) {
-    return <div>Loading...</div>; // Add spinner or loading indicator if desired
+    return <LoadingState label="Loading session" />;
   }
 
   return isAuthenticated ? children : <Navigate to="/login" />;

@@ -31,22 +31,14 @@ import SendIcon from '@mui/icons-material/Send';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import Tooltip from '@mui/material/Tooltip';
 import Autocomplete from '@mui/material/Autocomplete';
-import { makeStyles } from '@mui/styles';
+import { useNavigate } from 'react-router-dom';
 import apiClient from '../../utils/apiClient';
 import DataTable from '../common/DataTable';
 
-const useStyles = makeStyles((theme) => ({
-  card: {
-    borderRadius: theme.shape.borderRadius,
-    boxShadow: theme.shadows[3],
-    backgroundColor: theme.palette.background.paper,
-    color: theme.palette.text.primary,
-    width: '100%',
-  },
-  cardContent: {
-    padding: theme.spacing(3),
-  },
-}));
+const useStyles = () => ({
+  card: 'page-card',
+  cardContent: 'page-card-content',
+});
 
 const PAYMENT_METHODS = [
   { value: 'card', label: 'Card' },
@@ -135,8 +127,13 @@ const resolveInvoiceForPayment = (payment, invoiceOptions) => {
   };
 };
 
+const resolvePatientIdForPayment = (payment) => (
+  payment?.patient_id || payment?.invoice_summary?.patient_id || null
+);
+
 const Payments = ({ userData }) => {
   const classes = useStyles();
+  const navigate = useNavigate();
   const canManagePayments = ['admin', 'receptionist'].includes(userData?.role);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -407,6 +404,15 @@ const Payments = ({ userData }) => {
     }
   };
 
+  const handleOpenPatientPaymentSummary = (payment) => {
+    const patientId = resolvePatientIdForPayment(payment);
+    if (!patientId) {
+      setToast({ message: 'Patient details are unavailable for this payment.', severity: 'error' });
+      return;
+    }
+    navigate(`/dashboard/patients/${patientId}?paymentSummary=1`);
+  };
+
   const downloadReceiptPdf = async (payment) => {
     if (!payment?.receipt_summary?.receipt_number) {
       setToast({ message: 'Receipt not available yet', severity: 'error' });
@@ -481,6 +487,15 @@ const Payments = ({ userData }) => {
 
   const renderRowActions = (row) => (
     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Button
+        size="small"
+        variant="outlined"
+        onClick={() => handleOpenPatientPaymentSummary(row)}
+        disabled={!resolvePatientIdForPayment(row)}
+        sx={{ minWidth: 0 }}
+      >
+        Payment Summary
+      </Button>
       <Tooltip title="View receipt">
         <span>
           <IconButton

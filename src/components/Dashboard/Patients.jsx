@@ -31,7 +31,6 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
-import { makeStyles } from '@mui/styles';
 import { useNavigate } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
 import apiClient from '../../utils/apiClient';
@@ -43,36 +42,14 @@ import Autocomplete from '@mui/material/Autocomplete';
 import useTherapists from '../../hooks/useTherapists';
 import DataTable from '../common/DataTable';
 
-const useStyles = makeStyles((theme) => ({
-  card: {
-    borderRadius: theme.shape.borderRadius,
-    boxShadow: theme.shadows[3],
-    backgroundColor: theme.palette.background.paper,
-    color: theme.palette.text.primary,
-    width: '100%',
-  },
-  cardContent: {
-    padding: theme.spacing(3),
-  },
-  table: {
-    minWidth: 650,
-  },
-  searchField: {
-    marginBottom: theme.spacing(2),
-    width: '100%',
-  },
-  searchIcon: {
-    position: 'absolute',
-    right: theme.spacing(2),
-    top: 'calc(50% - 12px)',
-  },
-  patientDetails: {
-    marginTop: theme.spacing(2),
-    padding: theme.spacing(2),
-    backgroundColor: theme.palette.background.default,
-    borderRadius: theme.shape.borderRadius,
-  },
-}));
+const useStyles = () => ({
+  card: 'page-card',
+  cardContent: 'page-card-content',
+  table: 'page-table',
+  searchField: 'page-search-field',
+  searchIcon: 'page-search-icon',
+  patientDetails: 'page-details-panel',
+});
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },

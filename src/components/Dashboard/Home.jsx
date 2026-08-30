@@ -298,7 +298,7 @@ const Home = ({ userData }) => {
             Calendar
           </Typography>
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.08)' }} />
-          <Box mt={3} sx={{ width: '100%', minHeight: '1200px' }}>
+          <Box mt={3} sx={{ width: '100%', minHeight: { xs: 0, lg: 'min(1200px, calc(100vh - 180px))' } }}>
             <TUICalendar />
           </Box>
         </CardContent>
@@ -424,6 +424,4 @@ const Home = ({ userData }) => {
 };
 
 export default Home;
-
-
 

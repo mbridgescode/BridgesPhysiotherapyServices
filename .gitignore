@@ -7,6 +7,9 @@
 
 # testing
 /coverage
+/test-results
+/playwright-report
+/storybook-static
 
 # production
 /build
@@ -44,3 +47,4 @@ apply_validators_commands.json
 public/chromium-pack.tar
 
 .vercel
+.playwright-cli/

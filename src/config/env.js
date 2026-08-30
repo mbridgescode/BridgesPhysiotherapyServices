@@ -111,6 +111,12 @@ const buildCorsOriginPatterns = (origins) => {
 const corsOrigins = resolveCorsOrigins();
 const corsOriginPatterns = buildCorsOriginPatterns(corsOrigins);
 
+const HEIDI_REGIONS = ['AU', 'US', 'UK', 'EU', 'CA'];
+const configuredHeidiRegion = (process.env.HEIDI_REGION || 'UK').trim().toUpperCase();
+const heidiRegion = HEIDI_REGIONS.includes(configuredHeidiRegion)
+  ? configuredHeidiRegion
+  : 'UK';
+
 module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
   host: process.env.HOST || 'localhost',
@@ -125,6 +131,13 @@ module.exports = {
   refreshTokenExpiresIn: process.env.REFRESH_TOKEN_TTL || '7d',
   resendApiKey: process.env.RESEND_API_KEY || '',
   defaultFromEmail: process.env.EMAIL_FROM_ADDRESS || 'no-reply@bridgesphysio.com',
+  heidiApiKey: (process.env.HEIDI_API_KEY || '').trim(),
+  heidiApiBaseUrl: (process.env.HEIDI_API_BASE_URL
+    || 'https://registrar.api.heidihealth.com/api/v2/ml-scribe/open-api').replace(/\/+$/, ''),
+  heidiRegion,
+  heidiWidgetUrl: process.env.HEIDI_WIDGET_URL
+    || 'https://widget.heidihealth.com/widget/heidi.js',
+  heidiProductName: process.env.HEIDI_PRODUCT_NAME || 'Bridges Physiotherapy Services',
   invoiceStoragePath: process.env.INVOICE_STORAGE_PATH
     || path.join(storageRoot, 'invoices'),
   receiptStoragePath: process.env.RECEIPT_STORAGE_PATH

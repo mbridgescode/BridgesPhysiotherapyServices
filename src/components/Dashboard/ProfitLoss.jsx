@@ -18,7 +18,6 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
-import { makeStyles } from '@mui/styles';
 import {
   format as formatDate,
   subDays,
@@ -32,18 +31,10 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import apiClient from '../../utils/apiClient';
 import DataTable from '../common/DataTable';
 
-const useStyles = makeStyles((theme) => ({
-  card: {
-    borderRadius: theme.shape.borderRadius,
-    boxShadow: theme.shadows[3],
-    backgroundColor: theme.palette.background.paper,
-    color: theme.palette.text.primary,
-    width: '100%',
-  },
-  section: {
-    marginBottom: theme.spacing(3),
-  },
-}));
+const useStyles = () => ({
+  card: 'page-card',
+  section: 'page-section',
+});
 
 const buildDefaultRange = () => {
   const end = new Date();

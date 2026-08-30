@@ -36,8 +36,7 @@ import {
   Paper,
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
-import { makeStyles } from '@mui/styles';
-import { Link as RouterLink, useParams } from 'react-router-dom';
+import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
@@ -50,21 +49,12 @@ import DataTable from '../common/DataTable';
 import useTreatmentNoteTemplates from '../../hooks/useTreatmentNoteTemplates';
 import useTherapists from '../../hooks/useTherapists';
 
-const useStyles = makeStyles((theme) => ({
-  section: {
-    marginBottom: theme.spacing(3),
-  },
-  tableContainer: {
-    borderRadius: theme.shape.borderRadius,
-    boxShadow: theme.shadows[1],
-  },
-  formRow: {
-    marginTop: theme.spacing(2),
-  },
-  fullWidth: {
-    width: '100%',
-  },
-}));
+const useStyles = () => ({
+  section: 'page-section',
+  tableContainer: 'page-table-container',
+  formRow: 'page-form-row',
+  fullWidth: 'page-full-width',
+});
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -122,6 +112,7 @@ const paymentSummaryAmountDisplay = (value, currency = 'GBP') => (
 const PatientDetails = () => {
   const classes = useStyles();
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { userData } = useContext(UserContext);
   const { refreshAppointments } = useContext(AppointmentsContext);
   const canEditNotes = ['admin', 'therapist'].includes(userData?.role);
@@ -422,6 +413,21 @@ const PatientDetails = () => {
       setGeneratingPaymentSummary(false);
     }
   };
+
+  useEffect(() => {
+    if (
+      searchParams.get('paymentSummary') !== '1'
+      || !patient
+      || !canGeneratePaymentSummary
+    ) {
+      return;
+    }
+
+    openPaymentSummaryDialog();
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete('paymentSummary');
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [patient, canGeneratePaymentSummary, searchParams, setSearchParams]);
 
   useEffect(() => {
     loadDetails();

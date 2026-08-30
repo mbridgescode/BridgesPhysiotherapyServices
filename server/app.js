@@ -21,6 +21,7 @@ const treatmentNoteTemplatesRouter = require('../src/routes/treatmentNoteTemplat
 const gpLetterTemplatesRouter = require('../src/routes/gpLetterTemplates');
 const communicationsRouter = require('../src/routes/communications');
 const importsRouter = require('../src/routes/imports');
+const heidiRouter = require('../src/routes/heidi');
 const {
   host,
   corsOrigin,
@@ -105,6 +106,7 @@ app.use('/api/treatment-note-templates', treatmentNoteTemplatesRouter);
 app.use('/api/gp-letter-templates', gpLetterTemplatesRouter);
 app.use('/api/communications', communicationsRouter);
 app.use('/api/imports', importsRouter);
+app.use('/api/heidi', heidiRouter);
 
 app.get('/healthz', (req, res) => {
   res.json({ status: 'ok', environment: nodeEnv, timestamp: new Date().toISOString() });

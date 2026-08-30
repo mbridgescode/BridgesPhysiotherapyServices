@@ -31,34 +31,21 @@ import {
   Snackbar,
   useMediaQuery,
 } from '@mui/material';
-import { makeStyles } from '@mui/styles';
 import { useTheme } from '@mui/material/styles';
 import apiClient from '../../utils/apiClient';
 import { AppointmentsContext } from '../../context/AppointmentsContext';
 import Autocomplete from '@mui/material/Autocomplete';
 import useTherapists from '../../hooks/useTherapists';
 import DataTable from '../common/DataTable';
+import HeidiScribe from '../common/HeidiScribe';
 import InvoiceBuilderDialog from '../invoices/InvoiceBuilderDialog';
 
-const useStyles = makeStyles((theme) => ({
-  card: {
-    borderRadius: theme.shape.borderRadius,
-    boxShadow: theme.shadows[3],
-    backgroundColor: theme.palette.background.paper,
-    color: theme.palette.text.primary,
-    width: '100%',
-  },
-  cardContent: {
-    padding: theme.spacing(3),
-  },
-  table: {
-    minWidth: 650,
-  },
-  searchField: {
-    marginBottom: theme.spacing(2),
-    width: '100%',
-  },
-}));
+const useStyles = () => ({
+  card: 'page-card',
+  cardContent: 'page-card-content',
+  table: 'page-table',
+  searchField: 'page-search-field',
+});
 
 const buildPatientLabel = (patient) => {
   if (!patient) {
@@ -513,6 +500,22 @@ const Appointments = ({ userData }) => {
       setNoteDialog((prev) => ({ ...prev, saving: false, error: message }));
     }
   }, [closeNoteDialog, noteDialog.appointment, noteDialog.value, setAppointments]);
+
+  const handleHeidiNoteGenerated = useCallback((noteText) => {
+    if (!noteText) {
+      return;
+    }
+
+    setNoteDialog((prev) => {
+      const existingNotes = typeof prev.value === 'string' ? prev.value.trim() : '';
+      return {
+        ...prev,
+        value: existingNotes ? `${existingNotes}\n\n${noteText}` : noteText,
+        error: '',
+      };
+    });
+    setSubmitSuccess('Heidi note added. Review it before saving.');
+  }, []);
 
   const closeEditDialog = useCallback(() => {
     setEditDialog({
@@ -2102,6 +2105,20 @@ const Appointments = ({ userData }) => {
               canEditTreatmentNotes ? 'Notes are shared with the patient record.' : 'View-only access.'
             }
           />
+          {canEditTreatmentNotes && noteDialog.appointment && (
+            <Box>
+              <HeidiScribe
+                patient={patients.find((patient) => (
+                  Number(patient.patient_id) === Number(noteDialog.appointment.patient_id)
+                ))}
+                appointment={noteDialog.appointment}
+                onNoteGenerated={handleHeidiNoteGenerated}
+              />
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                Start a standard Heidi visit, then push the reviewed note back here.
+              </Typography>
+            </Box>
+          )}
           {noteDialog.error && (
             <Alert severity="error">
               {noteDialog.error}
@@ -2148,4 +2165,3 @@ const Appointments = ({ userData }) => {
 };
 
 export default Appointments;
-

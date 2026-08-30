@@ -104,14 +104,14 @@ const cloneRange = (range) => ({
 const formatInputDate = (value) => (value ? format(value, 'yyyy-MM-dd') : '');
 
 const REPORTS_PALETTE = {
-  background: '#050b1e',
-  panel: 'rgba(10, 16, 33, 0.9)',
-  panelAlt: 'rgba(11, 21, 45, 0.9)',
-  border: 'rgba(148, 163, 184, 0.2)',
-  textPrimary: '#f8fafc',
-  textSecondary: 'rgba(241, 245, 249, 0.68)',
-  accent: '#8b5cf6',
-  accentMuted: 'rgba(139, 92, 246, 0.2)',
+  background: '#0B1220',
+  panel: '#111B2D',
+  panelAlt: '#18263A',
+  border: 'rgba(148, 163, 184, 0.16)',
+  textPrimary: '#F8FAFC',
+  textSecondary: '#A7B3C5',
+  accent: '#8B5CF6',
+  accentMuted: 'rgba(139, 92, 246, 0.14)',
 };
 
 const deriveYearsFromRevenue = (revenue = []) => {

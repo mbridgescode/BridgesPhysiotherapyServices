@@ -61,6 +61,35 @@ const PAYMENT_METHODS = [
   { value: 'other', label: 'Other' },
 ];
 
+const resolveInvoiceServiceDateRange = (invoice) => {
+  const timestamps = (invoice?.line_items || [])
+    .map((item) => item?.service_date || item?.treatment_date)
+    .map((value) => new Date(value).getTime())
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+
+  if (timestamps.length === 0) {
+    return { start: '', end: '' };
+  }
+
+  return {
+    start: new Date(timestamps[0]).toISOString(),
+    end: new Date(timestamps[timestamps.length - 1]).toISOString(),
+  };
+};
+
+const INVOICE_SORT_OPTIONS = [
+  { value: 'service_date', label: 'Treatment date' },
+  { value: 'issue_date', label: 'Issued date' },
+  { value: 'due_date', label: 'Due date' },
+  { value: 'invoice_number', label: 'Invoice number' },
+  { value: 'patientDisplayName', label: 'Patient' },
+  { value: 'status', label: 'Status' },
+  { value: 'netTotal', label: 'Net total' },
+  { value: 'grossTotal', label: 'Gross total' },
+  { value: 'balance_due', label: 'Balance' },
+];
+
 const Invoices = ({ userData }) => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +108,7 @@ const Invoices = ({ userData }) => {
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
   const [markPaidState, setMarkPaidState] = useState(() => defaultMarkPaidState());
   const [markingUnpaidFor, setMarkingUnpaidFor] = useState(null);
+  const [invoiceSort, setInvoiceSort] = useState({ orderBy: 'service_date', order: 'desc' });
   const isAdmin = (userData?.role || '').toLowerCase() === 'admin';
 
   const showToast = useCallback((message, severity = 'success') => {
@@ -674,11 +704,14 @@ const Invoices = ({ userData }) => {
         && invoice.billing_contact_name !== patientDisplayName
         ? invoice.billing_contact_name
         : '';
+      const serviceDateRange = resolveInvoiceServiceDateRange(invoice);
 
       return {
         ...invoice,
         patientDisplayName,
         billingContactDisplay,
+        invoiceServiceDate: serviceDateRange.start,
+        invoiceServiceDateEnd: serviceDateRange.end,
       };
     }),
     [invoices],
@@ -696,12 +729,34 @@ const Invoices = ({ userData }) => {
           <Typography variant="body2" fontWeight={600}>
             {row.invoice_number}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {row.issue_date
-              ? `Issued ${new Date(row.issue_date).toLocaleDateString('en-GB')}`
-              : 'Issued -'}
-          </Typography>
         </Box>
+      ),
+    },
+    {
+      id: 'service_date',
+      label: 'Treatment Date',
+      type: 'date',
+      minWidth: 160,
+      valueGetter: (row) => row.invoiceServiceDate || '',
+      render: (row) => {
+        if (!row.invoiceServiceDate) {
+          return '-';
+        }
+        const firstDate = new Date(row.invoiceServiceDate).toLocaleDateString('en-GB');
+        const lastDate = row.invoiceServiceDateEnd
+          ? new Date(row.invoiceServiceDateEnd).toLocaleDateString('en-GB')
+          : firstDate;
+        return firstDate === lastDate ? firstDate : `${firstDate} - ${lastDate}`;
+      },
+    },
+    {
+      id: 'issue_date',
+      label: 'Issued',
+      type: 'date',
+      minWidth: 140,
+      valueGetter: (row) => row.issue_date || '',
+      render: (row) => (
+        row.issue_date ? new Date(row.issue_date).toLocaleDateString('en-GB') : '-'
       ),
     },
     {
@@ -892,15 +947,48 @@ const Invoices = ({ userData }) => {
         >
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Typography variant="h5">Invoices</Typography>
-            <Button variant="contained" onClick={openCreateDialog}>
-              New Invoice
-            </Button>
+            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" justifyContent="flex-end">
+              <TextField
+                select
+                size="small"
+                label="Sort by"
+                value={invoiceSort.orderBy}
+                onChange={(event) => setInvoiceSort((prev) => ({
+                  ...prev,
+                  orderBy: event.target.value,
+                }))}
+                sx={{ minWidth: 160 }}
+              >
+                {INVOICE_SORT_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setInvoiceSort((prev) => ({
+                  ...prev,
+                  order: prev.order === 'desc' ? 'asc' : 'desc',
+                }))}
+                aria-label={`Sort ${invoiceSort.order === 'desc' ? 'ascending' : 'descending'}`}
+              >
+                {invoiceSort.order === 'desc' ? 'Descending' : 'Ascending'}
+              </Button>
+              <Button variant="contained" onClick={openCreateDialog}>
+                New Invoice
+              </Button>
+            </Box>
           </Box>
           <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <DataTable
               columns={invoiceColumns}
               rows={tableRows}
               getRowId={tableRowId}
+              sortBy={invoiceSort.orderBy}
+              sortOrder={invoiceSort.order}
+              onSortChange={({ orderBy, order }) => setInvoiceSort({ orderBy, order })}
               maxHeight="100%"
               containerSx={{ height: '100%', flex: 1, minHeight: 0, width: '100%' }}
               emptyMessage="No invoices to display."

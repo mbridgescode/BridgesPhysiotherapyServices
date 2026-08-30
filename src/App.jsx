@@ -10,7 +10,6 @@ import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import Dashboard from './components/Dashboard/Dashboard';
 import PrivateRoute from './routes/PrivateRoute';
-import './styles/global.css';
 import theme from './theme';
 
 const App = () => {

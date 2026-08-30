@@ -144,24 +144,24 @@ const TUICalendar = () => {
         events={events}
         startAccessor="start"
         endAccessor="end"
-        style={{ height: 1020 }}
+        style={{ height: 'clamp(620px, calc(100vh - 220px), 880px)' }}
         min={minTime}
         max={maxTime}
         views={[Views.DAY, Views.WEEK, Views.MONTH]}
         defaultView={Views.WEEK}
         eventPropGetter={(event) => {
           const colors = {
-            scheduled: '#6366F1',
-            completed: '#22c55e',
-            cancelled: '#f87171',
+            scheduled: '#8B5CF6',
+            completed: '#34D399',
+            cancelled: '#FB7185',
           };
           return {
             style: {
               backgroundColor: colors[event.status] || '#a855f7',
-              borderRadius: 12,
+              borderRadius: 8,
               border: 'none',
               color: '#fff',
-              boxShadow: '0 8px 20px rgba(10,10,25,0.45)',
+              boxShadow: '0 6px 15px rgba(0,0,0,0.18)',
             },
           };
         }}
