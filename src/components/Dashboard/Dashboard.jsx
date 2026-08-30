@@ -4,10 +4,10 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import Sidebar, { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH } from '../Sidebar';
 import { Button } from '../../ui';
 import Home from './Home';
+import Schedule from './Schedule';
 import Settings from './Settings';
 import Reports from './Reports';
 import ProfitLoss from './ProfitLoss';
-import Appointments from './Appointments';
 import Patients from './Patients';
 import PatientDetails from './PatientDetails';
 import Invoices from './Invoices';
@@ -18,6 +18,8 @@ import Communications from './Communications';
 import apiClient from '../../utils/apiClient';
 import { emitAuthTokenChanged } from '../../utils/authEvents';
 import bpsLogo from '../../logo/BPS Logo.png';
+import WorkspaceNavigation from './WorkspaceNavigation';
+import { getNavigationItemForPath } from './navigation';
 
 const Dashboard = () => {
   const [userData, setUserData] = useState(null);
@@ -61,6 +63,7 @@ const Dashboard = () => {
 
   const drawerWidth = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH);
   const greeting = userData?.name || userData?.username ? `Hi, ${userData.name || userData.username}` : 'Dashboard';
+  const activeNavigationItem = getNavigationItemForPath(location.pathname, userData?.role);
   const isBottomActive = (path) => path === '/dashboard'
     ? location.pathname === '/dashboard'
     : location.pathname.startsWith(path);
@@ -86,7 +89,7 @@ const Dashboard = () => {
                 </div>
               </div>
               <div className="app-mobile-header__context">
-                <span>Today</span>
+                <span>{activeNavigationItem?.label || 'Clinic workspace'}</span>
                 <strong>{greeting}</strong>
               </div>
               <Button className="app-mobile-menu" variant="ghost" size="sm" type="button" aria-label="Open navigation" onClick={() => setMobileDrawerOpen(true)}>
@@ -94,9 +97,10 @@ const Dashboard = () => {
               </Button>
             </header>
           )}
+          <WorkspaceNavigation userData={userData} />
           <Routes>
             <Route index element={<Home userData={userData} />} />
-            <Route path="appointments" element={<Appointments userData={userData} />} />
+            <Route path="appointments" element={<Schedule userData={userData} />} />
             <Route path="patients" element={<Patients userData={userData} />} />
             <Route path="patients/:id" element={<PatientDetails />} />
             <Route path="invoices" element={<Invoices userData={userData} />} />
@@ -107,17 +111,23 @@ const Dashboard = () => {
             <Route path="communications" element={<Communications />} />
             <Route path="audit" element={<AuditLog />} />
             <Route path="admin" element={<Admin />} />
+            <Route path="billing" element={<Navigate to="/dashboard/invoices" replace />} />
+            <Route path="insights" element={<Navigate to="/dashboard/reports" replace />} />
+            <Route
+              path="administration"
+              element={<Navigate to={userData.role === 'admin' ? '/dashboard/admin' : '/dashboard/settings'} replace />}
+            />
             <Route path="*" element={<Navigate to="." replace />} />
           </Routes>
           {isMobile && (
             <nav className="app-mobile-bottom-nav" aria-label="Quick navigation">
               <button className={`app-mobile-bottom-nav__item ${isBottomActive('/dashboard') ? 'is-active' : ''}`} type="button" onClick={() => navigate('/dashboard')}>
                 <HomeIcon size={18} strokeWidth={1.8} />
-                <span>Home</span>
+                <span>Today</span>
               </button>
               <button className={`app-mobile-bottom-nav__item ${isBottomActive('/dashboard/appointments') ? 'is-active' : ''}`} type="button" onClick={() => navigate('/dashboard/appointments')}>
                 <CalendarDays size={18} strokeWidth={1.8} />
-                <span>Agenda</span>
+                <span>Schedule</span>
               </button>
               <button className={`app-mobile-bottom-nav__item ${isBottomActive('/dashboard/patients') ? 'is-active' : ''}`} type="button" onClick={() => navigate('/dashboard/patients')}>
                 <Users size={18} strokeWidth={1.8} />

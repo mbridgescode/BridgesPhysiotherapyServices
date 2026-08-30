@@ -46,6 +46,7 @@ import apiClient from '../../utils/apiClient';
 import { UserContext } from '../../context/UserContext';
 import { AppointmentsContext } from '../../context/AppointmentsContext';
 import DataTable from '../common/DataTable';
+import SectionNav from '../common/SectionNav';
 import useTreatmentNoteTemplates from '../../hooks/useTreatmentNoteTemplates';
 import useTherapists from '../../hooks/useTherapists';
 
@@ -1095,7 +1096,7 @@ const PatientDetails = () => {
 
   return (
     <Box>
-      <Card className={classes.section}>
+      <Card id="patient-overview" className={classes.section}>
         <CardContent>
           <Box
             display="flex"
@@ -1452,6 +1453,18 @@ const PatientDetails = () => {
       </CardContent>
       </Card>
 
+      <SectionNav
+        label="Patient record"
+        items={[
+          { id: 'patient-overview', label: 'Overview' },
+          { id: 'patient-notes', label: 'Notes' },
+          { id: 'patient-treatment-notes', label: 'Treatment notes' },
+          { id: 'patient-history', label: 'History' },
+          { id: 'patient-invoices', label: 'Invoices' },
+          { id: 'patient-communications', label: 'Communications' },
+        ]}
+      />
+
       {canArchivePatient && (
         <Dialog
           open={archiveDialogOpen}
@@ -1570,7 +1583,7 @@ const PatientDetails = () => {
         </>
       )}
 
-      <Card className={classes.section}>
+      <Card id="patient-notes" className={classes.section}>
         <CardContent>
           <Typography variant="h6">Patient Notes</Typography>
           <Divider sx={{ my: 2 }} />
@@ -1746,7 +1759,7 @@ const PatientDetails = () => {
         </DialogActions>
       </Dialog>
 
-      <Card className={classes.section}>
+      <Card id="patient-treatment-notes" className={classes.section}>
         <CardContent>
           <Typography variant="h6">Treatment Notes</Typography>
           <Divider sx={{ my: 2 }} />
@@ -1899,7 +1912,7 @@ const PatientDetails = () => {
         </CardContent>
       </Card>
 
-      <Card className={classes.section}>
+      <Card id="patient-history" className={classes.section}>
         <CardContent>
           <Typography variant="h6">Treatment History</Typography>
           <Divider sx={{ my: 2 }} />
@@ -1916,7 +1929,7 @@ const PatientDetails = () => {
         </CardContent>
       </Card>
 
-      <Card className={classes.section}>
+      <Card id="patient-invoices" className={classes.section}>
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
             <Typography variant="h6">Invoices</Typography>
@@ -1944,7 +1957,7 @@ const PatientDetails = () => {
         </CardContent>
       </Card>
 
-      <Card className={classes.section}>
+      <Card id="patient-communications" className={classes.section}>
         <CardContent>
           <Typography variant="h6">Communications</Typography>
           <Divider sx={{ my: 2 }} />

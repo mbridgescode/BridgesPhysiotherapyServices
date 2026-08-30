@@ -9,20 +9,20 @@ import {
   Box,
   Grid,
   Card,
-  CardContent,
   Divider,
   Typography,
   CircularProgress,
   Chip,
   Stack,
+  Button,
   TextField,
   MenuItem,
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
-import TUICalendar from './TUICalendar';
 import apiClient from '../../utils/apiClient';
 import { useTherapists } from '../../hooks/useTherapists';
+import { useNavigate } from 'react-router-dom';
 
 const surfaceCardStyles = {
   borderRadius: 10,
@@ -52,6 +52,7 @@ const appointmentRowStyles = {
 };
 
 const Home = ({ userData }) => {
+  const navigate = useNavigate();
   const [appointments, setAppointments] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [loadingMetrics, setLoadingMetrics] = useState(true);
@@ -257,6 +258,19 @@ const Home = ({ userData }) => {
 
   return (
     <Stack className="dashboard-home" spacing={4} sx={{ width: '100%', py: 2 }}>
+      <Box className="page-intro" sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+        <Box>
+          <Typography variant="h4" sx={{ mt: 0.5, lineHeight: 1.2 }}>
+            Today
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+            Keep the day moving with a quick view of your clinic and upcoming patients.
+          </Typography>
+        </Box>
+        <Button variant="contained" onClick={() => navigate('/dashboard/appointments')}>
+          Open schedule
+        </Button>
+      </Box>
       {visibleMetricCards.length > 0 && (
         <Grid container spacing={3}>
           {loadingMetrics ? (
@@ -291,18 +305,6 @@ const Home = ({ userData }) => {
           )}
         </Grid>
       )}
-
-      <Card className="glass-card" sx={{ borderRadius: 4 }}>
-        <CardContent sx={{ p: 3 }}>
-          <Typography variant="h5" className="page-heading" gutterBottom>
-            Calendar
-          </Typography>
-          <Divider sx={{ borderColor: 'rgba(148,163,184,0.08)' }} />
-          <Box mt={3} sx={{ width: '100%', minHeight: { xs: 0, lg: 'min(1200px, calc(100vh - 180px))' } }}>
-            <TUICalendar />
-          </Box>
-        </CardContent>
-      </Card>
 
       <Box sx={{ px: { xs: 1, md: 0 } }}>
         <Typography variant="h5" className="page-heading" gutterBottom>

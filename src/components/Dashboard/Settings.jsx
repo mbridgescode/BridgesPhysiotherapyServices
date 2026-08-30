@@ -33,6 +33,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import apiClient from '../../utils/apiClient';
 import { UserContext } from '../../context/UserContext';
 import DataTable from '../common/DataTable';
+import SectionNav from '../common/SectionNav';
 import useTreatmentNoteTemplates from '../../hooks/useTreatmentNoteTemplates';
 
 const REQUEST_TYPES = [
@@ -975,7 +976,7 @@ const Settings = () => {
   };
 
   const renderTwoFactorCard = () => (
-    <Card>
+    <Card id="security-settings">
       <CardContent>
         <Typography variant="h5" gutterBottom>
           Two-Factor Authentication
@@ -1066,6 +1067,10 @@ const Settings = () => {
   if (!isAdmin) {
     return (
       <Box display="flex" flexDirection="column" gap={3}>
+        <SectionNav
+          label="Settings areas"
+          items={[{ id: 'security-settings', label: 'Security' }]}
+        />
         {renderTwoFactorCard()}
         <Alert severity="info">
           Clinic settings and templates can only be edited by administrators.
@@ -1088,7 +1093,20 @@ const Settings = () => {
 
   return (
     <Box display="flex" flexDirection="column" gap={3}>
-      <Card>
+      <SectionNav
+        label="Settings areas"
+        items={[
+          { id: 'clinic-settings', label: 'Clinic' },
+          { id: 'email-testing', label: 'Email testing' },
+          { id: 'data-requests', label: 'Data requests' },
+          { id: 'retention-review', label: 'Retention' },
+          { id: 'legacy-import', label: 'Import' },
+          { id: 'security-settings', label: 'Security' },
+          { id: 'treatment-note-templates', label: 'Note templates' },
+          { id: 'services-catalogue', label: 'Services' },
+        ]}
+      />
+      <Card id="clinic-settings">
         <CardContent>
         <Typography variant="h5" gutterBottom>
           Clinic Settings
@@ -1207,7 +1225,7 @@ const Settings = () => {
       </CardContent>
     </Card>
 
-      <Card>
+      <Card id="email-testing">
         <CardContent>
           <Typography variant="h5" gutterBottom>
             Test Emails
@@ -1284,7 +1302,7 @@ const Settings = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="data-requests">
         <CardContent>
           <Typography variant="h5" gutterBottom>
             Data Subject Requests
@@ -1378,7 +1396,7 @@ const Settings = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="retention-review">
         <CardContent>
           <Typography variant="h5" gutterBottom>
             Retention Review
@@ -1411,7 +1429,7 @@ const Settings = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="legacy-import">
         <CardContent>
           <Typography variant="h5" gutterBottom>
             Legacy Data Import
@@ -1531,7 +1549,7 @@ const Settings = () => {
         </Card>
       )}
 
-    <Card>
+    <Card id="services-catalogue">
       <CardContent>
         <Typography variant="h5" gutterBottom>
             Services Catalogue

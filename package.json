@@ -47,6 +47,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "start:api": "node server.js",
+    "db:seed:uat": "node scripts/db/seedUat.js",
     "test:visual": "playwright test",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",

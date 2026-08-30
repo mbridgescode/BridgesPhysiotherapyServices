@@ -31,6 +31,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DataTable from '../common/DataTable';
+import SectionNav from '../common/SectionNav';
 import { UserContext } from '../../context/UserContext';
 import apiClient from '../../utils/apiClient';
 import useGpLetterTemplates from '../../hooks/useGpLetterTemplates';
@@ -669,7 +670,17 @@ const Communications = () => {
 
   return (
     <Box display="flex" flexDirection="column" gap={3}>
-      <Card>
+      <SectionNav
+        label="Communication areas"
+        items={[
+          { id: 'email-templates', label: 'Email templates' },
+          { id: 'standard-communications', label: 'Standard messages' },
+          { id: 'contact-details', label: 'Contact details' },
+          { id: 'gp-letters', label: 'GP letters' },
+          { id: 'communications-log', label: 'Activity log' },
+        ]}
+      />
+      <Card id="email-templates">
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
             <Typography variant="h5">Email Templates</Typography>
@@ -698,7 +709,7 @@ const Communications = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="standard-communications">
         <CardContent>
           <Typography variant="h5" gutterBottom>
             Standard patient communications
@@ -725,7 +736,7 @@ const Communications = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="contact-details">
         <CardContent>
           <Typography variant="h5" gutterBottom>
             Contact details & policy links
@@ -815,7 +826,7 @@ const Communications = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="gp-letters">
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
             <Typography variant="h5">GP Letter Templates</Typography>
@@ -892,7 +903,7 @@ const Communications = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="communications-log">
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
             <Typography variant="h5">Communications Log</Typography>

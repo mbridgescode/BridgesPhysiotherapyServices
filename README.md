@@ -106,6 +106,23 @@ npm run build
 4. If invoice PDFs need to persist beyond a single request, configure `INVOICE_STORAGE_PATH` and `PDF_TEMP_PATH` to point to durable storage (S3, Azure Blob, etc.). Vercel’s filesystem is ephemeral; by default the app will fall back to `/tmp` inside the function runtime.
 5. Trigger a deployment; Vercel will run `npm install --production=false`, `npm run build`, upload `/build` as static assets, and bundle `api/index.js` (plus all required server files) as a serverless function.
 
+### Preview/UAT database
+
+Preview deployments must use a separate MongoDB database containing synthetic data. Keep the production `MONGODB_URI` assigned to Production in Vercel and assign a URI whose database name contains `uat` to Preview. The UAT URI should not be committed to the repository.
+
+The idempotent seed utility creates test users and synthetic patients, appointments, invoices, payments, notes, communications, settings, templates, and counters. It refuses database names containing `prod`, `live`, or `production`, and it never drops the database:
+
+```bash
+MONGODB_URI="mongodb+srv://.../bridges_physiotherapy_uat" \
+DATA_ENCRYPTION_KEY="a-preview-only-encryption-key" \
+UAT_SEED_PASSWORD="a-preview-only-password" \
+npm run db:seed:uat
+```
+
+For the linked Vercel project, `scripts/db/provisionVercelUat.ps1` automates the one-time setup: it derives the UAT URI from the Production URI, generates Preview-only auth/encryption secrets, seeds the database, and writes only Preview overrides to Vercel. Re-running it resets the seeded accounts to the newly printed password but does not remove other UAT records.
+
+The seeded usernames are `uat-admin`, `uat-therapist`, and `uat-reception`; all use the password supplied through `UAT_SEED_PASSWORD`. Use non-deliverable `example.invalid` addresses for UAT records and leave preview email credentials unset so tests cannot send real messages.
+
 ## Operational Notes
 
 - Sensitive credentials are no longer stored anywhere in the repository. `src/config/env.js` now requires all secrets (MongoDB URI, token secrets, encryption key) to be provided via environment variables.
