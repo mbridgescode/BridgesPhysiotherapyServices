@@ -1,6 +1,6 @@
 // src/components/Dashboard/TUICalendar.js
 
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Calendar, momentLocalizer, Views } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -45,6 +45,13 @@ const TUICalendar = () => {
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isPopupVisible, setPopupVisible] = useState(false);
   const [selectedClinician, setSelectedClinician] = useState('all');
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 720);
+
+  useEffect(() => {
+    const updateViewport = () => setIsMobile(window.innerWidth < 720);
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  }, []);
 
   const clinicianOptions = useMemo(() => {
     const base = therapists.map((therapist) => ({
@@ -144,11 +151,11 @@ const TUICalendar = () => {
         events={events}
         startAccessor="start"
         endAccessor="end"
-        style={{ height: 'clamp(620px, calc(100vh - 220px), 880px)' }}
+        style={{ height: isMobile ? 'clamp(520px, calc(100vh - 250px), 720px)' : 'clamp(620px, calc(100vh - 220px), 880px)' }}
         min={minTime}
         max={maxTime}
-        views={[Views.DAY, Views.WEEK, Views.MONTH]}
-        defaultView={Views.WEEK}
+        views={isMobile ? [Views.DAY, Views.MONTH] : [Views.DAY, Views.WEEK, Views.MONTH]}
+        defaultView={isMobile ? Views.DAY : Views.WEEK}
         eventPropGetter={(event) => {
           const colors = {
             scheduled: '#8B5CF6',

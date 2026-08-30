@@ -256,7 +256,7 @@ const Home = ({ userData }) => {
   }, [agendaAppointments]);
 
   return (
-    <Stack spacing={4} sx={{ width: '100%', py: 2 }}>
+    <Stack className="dashboard-home" spacing={4} sx={{ width: '100%', py: 2 }}>
       {visibleMetricCards.length > 0 && (
         <Grid container spacing={3}>
           {loadingMetrics ? (
@@ -424,4 +424,3 @@ const Home = ({ userData }) => {
 };
 
 export default Home;
-

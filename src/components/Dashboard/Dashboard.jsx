@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Menu } from 'lucide-react';
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { CalendarDays, Home as HomeIcon, Menu, MoreHorizontal, Users } from 'lucide-react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar, { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH } from '../Sidebar';
 import { Button } from '../../ui';
 import Home from './Home';
@@ -17,6 +17,7 @@ import Admin from './Admin';
 import Communications from './Communications';
 import apiClient from '../../utils/apiClient';
 import { emitAuthTokenChanged } from '../../utils/authEvents';
+import bpsLogo from '../../logo/BPS Logo.png';
 
 const Dashboard = () => {
   const [userData, setUserData] = useState(null);
@@ -24,6 +25,7 @@ const Dashboard = () => {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1200);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const updateViewport = () => setIsMobile(window.innerWidth < 1200);
@@ -59,6 +61,9 @@ const Dashboard = () => {
 
   const drawerWidth = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH);
   const greeting = userData?.name || userData?.username ? `Hi, ${userData.name || userData.username}` : 'Dashboard';
+  const isBottomActive = (path) => path === '/dashboard'
+    ? location.pathname === '/dashboard'
+    : location.pathname.startsWith(path);
 
   return (
     <div className="app-layout" style={{ '--sidebar-width': `${drawerWidth}px` }}>
@@ -73,11 +78,20 @@ const Dashboard = () => {
         <div className="app-content">
           {isMobile && (
             <header className="app-mobile-header">
+              <div className="app-mobile-header__brand">
+                <img src={bpsLogo} alt="" className="app-mobile-header__logo" />
+                <div>
+                  <strong>BRIDGES</strong>
+                  <span>Clinic workspace</span>
+                </div>
+              </div>
+              <div className="app-mobile-header__context">
+                <span>Today</span>
+                <strong>{greeting}</strong>
+              </div>
               <Button className="app-mobile-menu" variant="ghost" size="sm" type="button" aria-label="Open navigation" onClick={() => setMobileDrawerOpen(true)}>
                 <Menu size={18} />
               </Button>
-              <strong>{greeting}</strong>
-              <span aria-hidden="true" style={{ width: 40 }} />
             </header>
           )}
           <Routes>
@@ -95,6 +109,26 @@ const Dashboard = () => {
             <Route path="admin" element={<Admin />} />
             <Route path="*" element={<Navigate to="." replace />} />
           </Routes>
+          {isMobile && (
+            <nav className="app-mobile-bottom-nav" aria-label="Quick navigation">
+              <button className={`app-mobile-bottom-nav__item ${isBottomActive('/dashboard') ? 'is-active' : ''}`} type="button" onClick={() => navigate('/dashboard')}>
+                <HomeIcon size={18} strokeWidth={1.8} />
+                <span>Home</span>
+              </button>
+              <button className={`app-mobile-bottom-nav__item ${isBottomActive('/dashboard/appointments') ? 'is-active' : ''}`} type="button" onClick={() => navigate('/dashboard/appointments')}>
+                <CalendarDays size={18} strokeWidth={1.8} />
+                <span>Agenda</span>
+              </button>
+              <button className={`app-mobile-bottom-nav__item ${isBottomActive('/dashboard/patients') ? 'is-active' : ''}`} type="button" onClick={() => navigate('/dashboard/patients')}>
+                <Users size={18} strokeWidth={1.8} />
+                <span>Patients</span>
+              </button>
+              <button className="app-mobile-bottom-nav__item" type="button" onClick={() => setMobileDrawerOpen(true)}>
+                <MoreHorizontal size={18} strokeWidth={1.8} />
+                <span>More</span>
+              </button>
+            </nav>
+          )}
         </div>
       </main>
     </div>

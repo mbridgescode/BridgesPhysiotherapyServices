@@ -39,5 +39,5 @@
   .rbc-toolbar { align-items: stretch; }
   .rbc-toolbar-label { order: -1; width: 100%; text-align: left; }
   .rbc-toolbar button { padding: 6px 9px; font-size: 12px; }
-  .rbc-time-view { min-width: 620px; }
+  .rbc-time-view { min-width: 0; overflow-x: hidden; }
 }
