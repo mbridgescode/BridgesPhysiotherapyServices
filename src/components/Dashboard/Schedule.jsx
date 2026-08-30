@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  Divider,
-  Typography,
-} from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import TUICalendar from './TUICalendar';
 import Appointments from './Appointments';
 
@@ -19,17 +13,7 @@ const Schedule = ({ userData }) => (
         View the calendar and manage every appointment from one place.
       </Typography>
     </Box>
-    <Card className="glass-card schedule-workspace__calendar">
-      <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-        <Typography variant="h5" className="page-heading" gutterBottom>
-          Calendar
-        </Typography>
-        <Divider sx={{ borderColor: 'rgba(148,163,184,0.08)' }} />
-        <Box mt={3} sx={{ width: '100%', minHeight: 0 }}>
-          <TUICalendar />
-        </Box>
-      </CardContent>
-    </Card>
+    <TUICalendar />
     <Appointments userData={userData} />
   </Box>
 );

@@ -19,6 +19,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TableContainer,
   TextField,
   Typography,
 } from '@mui/material';
@@ -129,6 +130,9 @@ const Reports = () => {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [profitLossData, setProfitLossData] = useState(null);
+  const [profitLossLoading, setProfitLossLoading] = useState(true);
+  const [profitLossError, setProfitLossError] = useState(null);
   const defaultRange = useMemo(() => buildRange('90d'), []);
   const [rangeKey, setRangeKey] = useState('90d');
   const [dateRange, setDateRange] = useState(() => cloneRange(defaultRange));
@@ -166,6 +170,29 @@ const Reports = () => {
   useEffect(() => {
     fetchMetrics(dateRange);
   }, [dateRange, fetchMetrics]);
+
+  const fetchProfitLoss = useCallback(async (range) => {
+    setProfitLossLoading(true);
+    try {
+      const response = await apiClient.get('/api/profit-loss', {
+        params: {
+          start: range.from?.toISOString(),
+          end: range.to?.toISOString(),
+        },
+      });
+      setProfitLossData(response.data);
+      setProfitLossError(null);
+    } catch (err) {
+      console.error('Failed to load profit and loss trend', err);
+      setProfitLossError('Profit data is temporarily unavailable');
+    } finally {
+      setProfitLossLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProfitLoss(dateRange);
+  }, [dateRange, fetchProfitLoss]);
 
   useEffect(() => {
     const years = deriveYearsFromRevenue(metrics?.revenueByMonth);
@@ -252,6 +279,66 @@ const Reports = () => {
   const revenueByMonth = metrics?.revenueByMonth || [];
   const outstanding = metrics?.outstanding || {};
 
+  const monthlyFinancials = useMemo(() => {
+    const monthMap = new Map();
+    revenueByMonth.forEach((entry) => {
+      if (!entry?._id) {
+        return;
+      }
+      monthMap.set(entry._id, {
+        id: entry._id,
+        billed: Number(entry.totalDue || 0),
+        collected: Number(entry.totalPaid || 0),
+        expenses: 0,
+      });
+    });
+
+    if (!revenueByMonth.length) {
+      (profitLossData?.invoiceEntries || []).forEach((entry) => {
+        const date = new Date(entry.date);
+        if (Number.isNaN(date.getTime())) {
+          return;
+        }
+        const key = format(date, 'yyyy-MM');
+        const current = monthMap.get(key) || {
+          id: key,
+          billed: 0,
+          collected: 0,
+          expenses: 0,
+        };
+        current.billed += Number(entry.amount || 0);
+        monthMap.set(key, current);
+      });
+    }
+
+    (profitLossData?.manualEntries || []).forEach((entry) => {
+      if (entry.type === 'income') {
+        return;
+      }
+      const date = new Date(entry.date);
+      if (Number.isNaN(date.getTime())) {
+        return;
+      }
+      const key = format(date, 'yyyy-MM');
+      const current = monthMap.get(key) || {
+        id: key,
+        billed: 0,
+        collected: 0,
+        expenses: 0,
+      };
+      current.expenses += Number(entry.amount || 0);
+      monthMap.set(key, current);
+    });
+
+    return Array.from(monthMap.values())
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((entry) => ({
+        ...entry,
+        profit: entry.billed - entry.expenses,
+        label: formatMonthLabel(entry.id),
+      }));
+  }, [profitLossData, revenueByMonth]);
+
   const appointmentTotals = useMemo(() => {
     const scheduled = appointments.scheduled ?? 0;
     const completed = appointments.completed ?? 0;
@@ -276,28 +363,35 @@ const Reports = () => {
     };
   }, [appointments]);
 
-  const revenueSeries = useMemo(() => {
-    if (!revenueByMonth?.length) {
+  const financialSeries = useMemo(() => {
+    if (!monthlyFinancials.length) {
       return [];
     }
-    return [
+    const series = [
       {
         name: 'Billed',
-        data: revenueByMonth.map((entry) => Number(entry.totalDue || 0)),
+        data: monthlyFinancials.map((entry) => entry.billed),
       },
       {
         name: 'Collected',
-        data: revenueByMonth.map((entry) => Number(entry.totalPaid || 0)),
+        data: monthlyFinancials.map((entry) => entry.collected),
       },
     ];
-  }, [revenueByMonth]);
+    if (profitLossData) {
+      series.push({
+        name: 'Profit',
+        data: monthlyFinancials.map((entry) => entry.profit),
+      });
+    }
+    return series;
+  }, [monthlyFinancials, profitLossData]);
 
-  const revenueCategories = useMemo(
-    () => revenueByMonth.map((entry) => formatMonthLabel(entry._id)),
-    [revenueByMonth],
+  const financialCategories = useMemo(
+    () => monthlyFinancials.map((entry) => entry.label),
+    [monthlyFinancials],
   );
 
-  const revenueChartOptions = useMemo(
+  const financialChartOptions = useMemo(
     () => ({
       chart: {
         type: 'area',
@@ -305,23 +399,24 @@ const Reports = () => {
         animations: { easing: 'easeInOut', speed: 600 },
         foreColor: palette.textSecondary,
       },
-      stroke: { curve: 'smooth', width: 3 },
+      stroke: { curve: 'smooth', width: [2, 3, 3] },
       dataLabels: { enabled: false },
       fill: {
         type: 'gradient',
         gradient: {
-          shadeIntensity: 0.7,
-          opacityFrom: 0.4,
-          opacityTo: 0.05,
+          shadeIntensity: 0.55,
+          opacityFrom: 0.28,
+          opacityTo: 0.03,
         },
       },
-      colors: ['#67e8f9', palette.accent],
+      colors: ['#60a5fa', '#5eead4', palette.accent],
       grid: { borderColor: palette.border },
       xaxis: {
         type: 'category',
-        categories: revenueCategories,
+        categories: financialCategories,
+        tickAmount: 8,
         labels: {
-          rotate: -45,
+          rotate: -35,
           style: { colors: palette.textSecondary },
         },
         axisBorder: { color: palette.border },
@@ -335,18 +430,20 @@ const Reports = () => {
       },
       tooltip: {
         theme: 'dark',
+        shared: true,
         y: {
           formatter: (value) => formatCurrency(value),
         },
       },
       legend: { position: 'top', labels: { colors: palette.textSecondary } },
     }),
-    [palette.accent, palette.border, palette.textSecondary, revenueCategories],
+    [financialCategories, palette.accent, palette.border, palette.textSecondary],
   );
 
   const appointmentDonut = useMemo(
     () => ({
       options: {
+        chart: { foreColor: palette.textSecondary },
         labels: [
           'Scheduled',
           'Completed',
@@ -356,9 +453,9 @@ const Reports = () => {
           'Cancelled (legacy)',
         ],
         colors: ['#94a3b8', '#10b981', '#f59e0b', '#f97316', '#ef4444', '#c084fc'],
-        legend: { position: 'bottom' },
+        legend: { position: 'bottom', labels: { colors: palette.textSecondary } },
         dataLabels: { enabled: false },
-        stroke: { width: 2 },
+        stroke: { width: 2, colors: [palette.panel] },
       },
       series: [
         appointmentTotals.scheduled,
@@ -369,7 +466,7 @@ const Reports = () => {
         appointmentTotals.cancelledLegacy,
       ],
     }),
-    [appointmentTotals],
+    [appointmentTotals, palette.panel, palette.textSecondary],
   );
 
   const revenueTableRows = useMemo(() => {
@@ -380,6 +477,7 @@ const Reports = () => {
     return revenueByMonth.map((entry) => {
       const paid = Number(entry.totalPaid || 0);
       const billed = Number(entry.totalDue || 0);
+      const financialEntry = monthlyFinancials.find((month) => month.id === entry._id);
       const collectionRate = billed ? paid / billed : 0;
       const growth = previousPaid !== null ? paid - previousPaid : null;
       previousPaid = paid;
@@ -388,11 +486,13 @@ const Reports = () => {
         label: formatMonthLabel(entry._id),
         billed,
         paid,
+        expenses: financialEntry?.expenses ?? null,
+        profit: financialEntry?.profit ?? null,
         collectionRate,
         growth,
       };
     });
-  }, [revenueByMonth]);
+  }, [monthlyFinancials, revenueByMonth]);
 
   const insightCards = useMemo(() => {
     const totalAppointments = appointmentTotals.total || 0;
@@ -491,28 +591,31 @@ const Reports = () => {
             Showing activity from {rangeLabel}
           </Typography>
         </div>
-        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="center">
-          <ButtonGroup variant="outlined" size="small">
-            {RANGE_OPTIONS.map((option) => (
-              <Button
-                key={option.key}
-                onClick={() => handleRangeChange(option.key)}
-                variant={rangeKey === option.key ? 'contained' : 'outlined'}
-                sx={{
-                  textTransform: 'none',
-                  borderColor: palette.border,
-                  color: palette.textPrimary,
-                  bgcolor:
-                    rangeKey === option.key ? palette.accentMuted : 'transparent',
-                  '&:hover': {
-                    bgcolor: palette.accentMuted,
-                  },
-                }}
-              >
-                {option.label}
-              </Button>
-            ))}
-          </ButtonGroup>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems={{ xs: 'stretch', lg: 'center' }} sx={{ width: { xs: '100%', lg: 'auto' }, minWidth: 0 }}>
+          <Box sx={{ maxWidth: '100%', overflowX: 'auto', pb: { xs: 0.5, lg: 0 } }}>
+            <ButtonGroup variant="outlined" size="small" aria-label="Report date range">
+              {RANGE_OPTIONS.map((option) => (
+                <Button
+                  key={option.key}
+                  onClick={() => handleRangeChange(option.key)}
+                  variant={rangeKey === option.key ? 'contained' : 'outlined'}
+                  sx={{
+                    flex: '0 0 auto',
+                    textTransform: 'none',
+                    borderColor: palette.border,
+                    color: palette.textPrimary,
+                    bgcolor:
+                      rangeKey === option.key ? palette.accentMuted : 'transparent',
+                    '&:hover': {
+                      bgcolor: palette.accentMuted,
+                    },
+                  }}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </ButtonGroup>
+          </Box>
           <FormControl size="small" sx={{ minWidth: 140 }}>
             <InputLabel sx={{ color: palette.textSecondary }}>Select Year</InputLabel>
             <Select
@@ -663,27 +766,42 @@ const Reports = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12}>
           <Card className="reports-card">
-            <CardHeader title="Revenue Trends" sx={{ color: palette.textPrimary }} />
-            <CardContent>
-              {revenueSeries.length ? (
+            <CardHeader
+              title="Cash & profit trend"
+              subheader="See what was billed, collected, and retained after recorded expenses."
+              sx={{ color: palette.textPrimary }}
+              subheaderTypographyProps={{ sx: { color: palette.textSecondary } }}
+            />
+            <CardContent sx={{ minWidth: 0 }}>
+              {financialSeries.length ? (
                 <ReactApexChart
                   type="area"
-                  options={revenueChartOptions}
-                  series={revenueSeries}
-                  height={320}
+                  options={financialChartOptions}
+                  series={financialSeries}
+                  height={340}
                 />
               ) : (
                 <Typography variant="body2" className="reports-muted">
                   Not enough revenue data for this date range.
                 </Typography>
               )}
+              {profitLossLoading && (
+                <Typography variant="caption" className="reports-muted">
+                  Updating the profit line…
+                </Typography>
+              )}
+              {profitLossError && (
+                <Typography variant="caption" color="warning.main">
+                  {profitLossError}; the chart is showing billed and collected values only.
+                </Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={5}>
           <Card className="reports-card">
             <CardHeader title="Appointment Mix" sx={{ color: palette.textPrimary }} />
             <CardContent>
@@ -718,48 +836,64 @@ const Reports = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} lg={7}>
+        <Grid item xs={12}>
           <Card className="reports-card" sx={{ height: '100%' }}>
             <CardHeader title="Monthly Revenue Breakdown" sx={{ color: palette.textPrimary }} />
             <CardContent sx={{ pt: 0 }}>
               {revenueTableRows.length ? (
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Month</TableCell>
-                      <TableCell align="right">Billed</TableCell>
-                      <TableCell align="right">Collected</TableCell>
-                      <TableCell align="right">Collection Rate</TableCell>
-                      <TableCell align="right">Delta vs Prev</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {revenueTableRows.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell>{row.label}</TableCell>
-                        <TableCell align="right">{formatCurrency(row.billed)}</TableCell>
-                        <TableCell align="right">{formatCurrency(row.paid)}</TableCell>
-                        <TableCell align="right">{formatPercent(row.collectionRate)}</TableCell>
-                        <TableCell
-                          align="right"
-                          sx={{
-                            color:
-                              row.growth === null || row.growth >= 0
-                                ? 'success.main'
-                                : 'error.main',
-                            fontWeight: 600,
-                          }}
-                        >
-                          {row.growth === null
-                            ? '--'
-                            : `${row.growth >= 0 ? '+' : '-'}${formatCurrency(
-                                Math.abs(row.growth),
-                              )}`}
-                        </TableCell>
+                <TableContainer sx={{ overflowX: 'auto' }}>
+                  <Table size="small" sx={{ minWidth: 820 }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Month</TableCell>
+                        <TableCell align="right">Billed</TableCell>
+                        <TableCell align="right">Collected</TableCell>
+                        <TableCell align="right">Expenses</TableCell>
+                        <TableCell align="right">Profit</TableCell>
+                        <TableCell align="right">Collection Rate</TableCell>
+                        <TableCell align="right">Delta vs Prev</TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHead>
+                    <TableBody>
+                      {revenueTableRows.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>{row.label}</TableCell>
+                          <TableCell align="right">{formatCurrency(row.billed)}</TableCell>
+                          <TableCell align="right">{formatCurrency(row.paid)}</TableCell>
+                          <TableCell align="right">
+                            {row.expenses === null ? '—' : formatCurrency(row.expenses)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{
+                              color: row.profit === null || row.profit >= 0 ? 'success.main' : 'error.main',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {row.profit === null ? '—' : formatCurrency(row.profit)}
+                          </TableCell>
+                          <TableCell align="right">{formatPercent(row.collectionRate)}</TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{
+                              color:
+                                row.growth === null || row.growth >= 0
+                                  ? 'success.main'
+                                  : 'error.main',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {row.growth === null
+                              ? '--'
+                              : `${row.growth >= 0 ? '+' : '-'}${formatCurrency(
+                                  Math.abs(row.growth),
+                                )}`}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               ) : (
                 <Typography variant="body2" className="reports-muted" sx={{ p: 2 }}>
                   No revenue history to display.
@@ -769,7 +903,7 @@ const Reports = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} lg={5}>
+        <Grid item xs={12} md={7}>
           <Card className="reports-card" sx={{ height: '100%' }}>
             <CardHeader title="Insight Highlights" sx={{ color: palette.textPrimary }} />
             <CardContent>
