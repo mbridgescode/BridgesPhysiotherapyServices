@@ -316,6 +316,20 @@ const Reports = () => {
     return Array.from(categoryMap.values()).sort((a, b) => b.amount - a.amount);
   }, [profitLossData]);
 
+  const monthlyTrendRows = useMemo(() => buildTrendRows(profitLossData, 'month'), [profitLossData]);
+
+  const collectionProfile = useMemo(
+    () => (profitLossData?.invoiceEntries || []).map((entry) => ({
+      x: safeNumber(entry.amount),
+      y: safeNumber(entry.total_paid),
+      invoiceNumber: entry.invoice_number,
+      balance: safeNumber(entry.balance_due),
+      dueDate: entry.due_date,
+      paidAt: entry.paid_at,
+    })),
+    [profitLossData],
+  );
+
   const ledgerRows = useMemo(() => [
     ...(profitLossData?.invoiceEntries || []).map((entry) => ({
       ...entry,
@@ -477,6 +491,13 @@ const Reports = () => {
     }]);
   };
 
+  const openInvoiceDrilldown = (invoiceNumber) => {
+    const invoice = ledgerRows.find((row) => row.sourceLabel === 'Invoice' && row.invoice_number === invoiceNumber);
+    if (invoice) {
+      openLedgerDrilldown(invoice);
+    }
+  };
+
   const downloadExport = async (exportFormat) => {
     setExporting(exportFormat);
     try {
@@ -527,6 +548,59 @@ const Reports = () => {
     legend: { position: 'top', labels: { colors: palette.textSecondary } },
   }), [compareEnabled, openTrendDrilldown, palette.border, palette.textSecondary, selectedMetric.color, trendRows]);
 
+  const monthlyBarOptions = useMemo(() => ({
+    chart: {
+      type: 'bar',
+      toolbar: { show: false },
+      foreColor: palette.textSecondary,
+      events: {
+        dataPointSelection: (_event, _chart, config) => openTrendDrilldown(monthlyTrendRows[config.dataPointIndex]),
+      },
+    },
+    colors: ['#60A5FA', '#5EEAD4', '#F59E0B', '#A78BFA'],
+    plotOptions: { bar: { horizontal: false, columnWidth: '58%', borderRadius: 4 } },
+    dataLabels: { enabled: false },
+    grid: { borderColor: palette.border },
+    xaxis: { categories: monthlyTrendRows.map((row) => row.label), labels: { style: { colors: palette.textSecondary } }, axisBorder: { color: palette.border }, axisTicks: { color: palette.border } },
+    yaxis: { labels: { formatter: (value) => formatCurrency(value), style: { colors: palette.textSecondary } } },
+    tooltip: { theme: 'dark', shared: true, intersect: false, y: { formatter: (value) => formatCurrency(value) } },
+    legend: { position: 'top', labels: { colors: palette.textSecondary } },
+  }), [monthlyTrendRows, openTrendDrilldown, palette.border, palette.textSecondary]);
+
+  const expenseDonutOptions = useMemo(() => ({
+    chart: {
+      type: 'donut',
+      foreColor: palette.textSecondary,
+      events: {
+        dataPointSelection: (_event, _chart, config) => openCategoryDrilldown(expenseCategories[config.dataPointIndex]?.category),
+      },
+    },
+    labels: expenseCategories.slice(0, 6).map((category) => category.category),
+    colors: ['#F59E0B', '#FB7185', '#F97316', '#FBBF24', '#A78BFA', '#94A3B8'],
+    dataLabels: { enabled: false },
+    stroke: { width: 2, colors: [palette.panel] },
+    legend: { position: 'bottom', labels: { colors: palette.textSecondary } },
+    tooltip: { theme: 'dark', y: { formatter: (value) => formatCurrency(value) } },
+  }), [expenseCategories, openCategoryDrilldown, palette.panel, palette.textSecondary]);
+
+  const collectionScatterOptions = useMemo(() => ({
+    chart: {
+      type: 'scatter',
+      toolbar: { show: false },
+      zoom: { enabled: false },
+      foreColor: palette.textSecondary,
+      events: {
+        dataPointSelection: (_event, _chart, config) => openInvoiceDrilldown(collectionProfile[config.dataPointIndex]?.invoiceNumber),
+      },
+    },
+    colors: ['#5EEAD4'],
+    markers: { size: 7, strokeWidth: 2, strokeColors: palette.panel },
+    grid: { borderColor: palette.border },
+    xaxis: { tickAmount: 5, title: { text: 'Invoice value', style: { color: palette.textSecondary } }, labels: { formatter: (value) => formatCurrency(value), style: { colors: palette.textSecondary } }, axisBorder: { color: palette.border }, axisTicks: { color: palette.border } },
+    yaxis: { title: { text: 'Cash collected', style: { color: palette.textSecondary } }, labels: { formatter: (value) => formatCurrency(value), style: { colors: palette.textSecondary } } },
+    tooltip: { theme: 'dark', custom: ({ seriesIndex, dataPointIndex, w }) => { const point = w.config.series[seriesIndex].data[dataPointIndex]; const dueDate = point.dueDate ? new Date(point.dueDate).toLocaleDateString('en-GB') : '—'; const paidAt = point.paidAt ? new Date(point.paidAt).toLocaleDateString('en-GB') : '—'; return `<div class="apexcharts-tooltip-box" style="padding:8px 10px"><strong>${point.invoiceNumber || 'Invoice'}</strong><br/>Invoice: ${formatCurrency(point.x)}<br/>Collected: ${formatCurrency(point.y)}<br/>Outstanding: ${formatCurrency(point.balance)}<br/>Due: ${dueDate}<br/>Paid: ${paidAt}</div>`; } },
+  }), [collectionProfile, openInvoiceDrilldown, palette.border, palette.panel, palette.textSecondary]);
+
   const chartSeries = useMemo(() => {
     const currentSeries = { name: selectedMetric.label, data: trendRows.map((row) => safeNumber(row[trendMetric])) };
     if (!compareEnabled || !previousTrendRows.length) {
@@ -534,6 +608,18 @@ const Reports = () => {
     }
     return [currentSeries, { name: 'Prior period', data: trendRows.map((_row, index) => safeNumber(previousTrendRows[index]?.[trendMetric])) }];
   }, [compareEnabled, previousTrendRows, selectedMetric.label, trendMetric, trendRows]);
+
+  const monthlyBarSeries = useMemo(() => [
+    { name: 'Billed', data: monthlyTrendRows.map((row) => row.billed) },
+    { name: 'Collected', data: monthlyTrendRows.map((row) => row.collected) },
+    { name: 'Expenses', data: monthlyTrendRows.map((row) => row.expenses) },
+    { name: 'Net profit', data: monthlyTrendRows.map((row) => row.net) },
+  ], [monthlyTrendRows]);
+
+  const expenseDonutSeries = useMemo(
+    () => expenseCategories.slice(0, 6).map((category) => category.amount),
+    [expenseCategories],
+  );
 
   const rangeLabel = dateRange.from && dateRange.to
     ? `${format(dateRange.from, 'dd MMM yyyy')} – ${format(dateRange.to, 'dd MMM yyyy')}`
@@ -588,8 +674,10 @@ const Reports = () => {
       <Grid container spacing={3}>
         <Grid item xs={12} lg={8}><Card sx={{ height: '100%', background: palette.panel, border: `1px solid ${palette.border}`, borderRadius: 3 }}><CardHeader title="Trend explorer" subheader="Choose a metric, change the grouping, then click a point to inspect its source records." action={<FormControl size="small" sx={{ minWidth: 170 }}><InputLabel>Metric</InputLabel><Select value={trendMetric} label="Metric" onChange={(event) => setTrendMetric(event.target.value)}>{metricOptions.map((metric) => <MenuItem key={metric.value} value={metric.value}>{metric.label}</MenuItem>)}</Select></FormControl>} subheaderTypographyProps={{ sx: { color: palette.textSecondary } }} /><CardContent sx={{ pt: 0, minWidth: 0 }}>{trendRows.length ? <ReactApexChart type="area" options={chartOptions} series={chartSeries} height={340} /> : <Box className="ui-empty-state"><strong>No trend data in this range</strong><p>Once invoices, payments or expenses are recorded, the selected metric will appear here.</p></Box>}{profitLossError && <Typography variant="caption" color="warning.main">{profitLossError}; the chart may be incomplete.</Typography>}</CardContent></Card></Grid>
         <Grid item xs={12} lg={4}><Card sx={{ height: '100%', background: palette.panel, border: `1px solid ${palette.border}`, borderRadius: 3 }}><CardHeader title="What changed" subheader={compareEnabled ? 'Compared with the preceding period of the same length.' : 'Turn on comparison to see movement.'} subheaderTypographyProps={{ sx: { color: palette.textSecondary } }} /><CardContent sx={{ pt: 0 }}><Stack spacing={1.5}><Box sx={{ p: 1.5, borderRadius: 2, background: palette.panelAlt }}><Typography variant="caption" className="reports-muted">Revenue movement</Typography><Typography variant="h6">{deltaLabel(getDelta(currentTotals.billed, compareEnabled ? previousTotals.billed : null))}</Typography><Typography variant="body2" className="reports-muted">Billed revenue in the selected period.</Typography></Box><Box sx={{ p: 1.5, borderRadius: 2, background: palette.panelAlt }}><Typography variant="caption" className="reports-muted">Cash conversion</Typography><Typography variant="h6">{formatPercent(currentTotals.billed ? currentTotals.collected / currentTotals.billed : 0)}</Typography><Typography variant="body2" className="reports-muted">Collected cash divided by invoices issued.</Typography></Box><Box sx={{ p: 1.5, borderRadius: 2, background: palette.panelAlt }}><Typography variant="caption" className="reports-muted">Largest expense category</Typography><Typography variant="h6">{expenseCategories[0]?.category || 'Not recorded'}</Typography><Typography variant="body2" className="reports-muted">{expenseCategories[0] ? `${formatCurrency(expenseCategories[0].amount)} across ${expenseCategories[0].count} entries` : 'Add a manual expense to start categorising costs.'}</Typography></Box></Stack></CardContent></Card></Grid>
-        <Grid item xs={12} md={5}><Card sx={{ height: '100%', background: palette.panel, border: `1px solid ${palette.border}`, borderRadius: 3 }}><CardHeader title="Expense mix" subheader="Click a category to trace every underlying entry." subheaderTypographyProps={{ sx: { color: palette.textSecondary } }} /><CardContent sx={{ pt: 0 }}>{expenseCategories.length ? <List disablePadding>{expenseCategories.slice(0, 6).map((category) => <ListItem key={category.category} disableGutters secondaryAction={<IconButton edge="end" aria-label={`Open ${category.category} expense details`} onClick={() => openCategoryDrilldown(category.category)}><OpenInNew fontSize="small" /></IconButton>} sx={{ borderBottom: `1px solid ${palette.border}`, py: 1 }}><ListItemText primary={category.category} secondary={`${category.count} entries`} /><Typography fontWeight={700} sx={{ mr: 4 }}>{formatCurrency(category.amount)}</Typography></ListItem>)}</List> : <Typography variant="body2" className="reports-muted">No manual expenses recorded in this period.</Typography>}<Divider sx={{ my: 2, borderColor: palette.border }} /><Typography variant="subtitle2">Clinic activity</Typography><Typography variant="body2" className="reports-muted" mb={1}>Operational context for the same reporting period.</Typography><Stack direction="row" spacing={2}><Box><Typography variant="h6">{metrics?.appointments?.completed || 0}</Typography><Typography variant="caption" className="reports-muted">Completed</Typography></Box><Box><Typography variant="h6">{metrics?.appointments?.scheduled || 0}</Typography><Typography variant="caption" className="reports-muted">Scheduled</Typography></Box><Box><Typography variant="h6">{metrics?.appointments?.cancelled || 0}</Typography><Typography variant="caption" className="reports-muted">Cancelled</Typography></Box></Stack></CardContent></Card></Grid>
+        <Grid item xs={12} lg={7}><Card sx={{ height: '100%', background: palette.panel, border: `1px solid ${palette.border}`, borderRadius: 3 }}><CardHeader title="Monthly financial snapshot" subheader="Compare billed revenue, cash collected, expenses and net profit at a glance. Click a month to inspect its source records." subheaderTypographyProps={{ sx: { color: palette.textSecondary } }} /><CardContent sx={{ pt: 0, minWidth: 0 }}>{monthlyTrendRows.length ? <ReactApexChart type="bar" options={monthlyBarOptions} series={monthlyBarSeries} height={320} /> : <Box className="ui-empty-state"><strong>No monthly data in this range</strong><p>Once transactions are recorded, the monthly comparison will appear here.</p></Box>}</CardContent></Card></Grid>
+        <Grid item xs={12} md={5}><Card sx={{ height: '100%', background: palette.panel, border: `1px solid ${palette.border}`, borderRadius: 3 }}><CardHeader title="Expense mix" subheader="Click a slice or category to trace every underlying entry." subheaderTypographyProps={{ sx: { color: palette.textSecondary } }} /><CardContent sx={{ pt: 0 }}>{expenseCategories.length ? <><ReactApexChart type="donut" options={expenseDonutOptions} series={expenseDonutSeries} height={280} /><Divider sx={{ mb: 1, borderColor: palette.border }} /><List disablePadding>{expenseCategories.slice(0, 6).map((category) => <ListItem key={category.category} disableGutters secondaryAction={<IconButton edge="end" aria-label={`Open ${category.category} expense details`} onClick={() => openCategoryDrilldown(category.category)}><OpenInNew fontSize="small" /></IconButton>} sx={{ borderBottom: `1px solid ${palette.border}`, py: 1 }}><ListItemText primary={category.category} secondary={`${category.count} entries`} /><Typography fontWeight={700} sx={{ mr: 4 }}>{formatCurrency(category.amount)}</Typography></ListItem>)}</List></> : <Typography variant="body2" className="reports-muted">No manual expenses recorded in this period.</Typography>}<Divider sx={{ my: 2, borderColor: palette.border }} /><Typography variant="subtitle2">Clinic activity</Typography><Typography variant="body2" className="reports-muted" mb={1}>Operational context for the same reporting period.</Typography><Stack direction="row" spacing={2}><Box><Typography variant="h6">{metrics?.appointments?.completed || 0}</Typography><Typography variant="caption" className="reports-muted">Completed</Typography></Box><Box><Typography variant="h6">{metrics?.appointments?.scheduled || 0}</Typography><Typography variant="caption" className="reports-muted">Scheduled</Typography></Box><Box><Typography variant="h6">{metrics?.appointments?.cancelled || 0}</Typography><Typography variant="caption" className="reports-muted">Cancelled</Typography></Box></Stack></CardContent></Card></Grid>
         <Grid item xs={12} md={7}><Card sx={{ height: '100%', background: palette.panel, border: `1px solid ${palette.border}`, borderRadius: 3 }}><CardHeader title="Cash reconciliation" subheader="Invoice timing and payment timing are shown separately so the movement is explainable." subheaderTypographyProps={{ sx: { color: palette.textSecondary } }} /><CardContent sx={{ pt: 0 }}><Stack direction={{ xs: 'column', sm: 'row' }} divider={<Divider orientation="vertical" flexItem />} spacing={2}><Box flex={1}><Typography variant="caption" className="reports-muted">Invoices issued</Typography><Typography variant="h5">{formatCurrency(currentTotals.billed)}</Typography><Typography variant="body2" className="reports-muted">Accrual-style revenue</Typography></Box><Box flex={1}><Typography variant="caption" className="reports-muted">Applied/refunded payments</Typography><Typography variant="h5">{formatCurrency(currentTotals.collected)}</Typography><Typography variant="body2" className="reports-muted">Cash movement</Typography></Box><Box flex={1}><Typography variant="caption" className="reports-muted">Timing difference</Typography><Typography variant="h5">{formatCurrency(currentTotals.billed - currentTotals.collected)}</Typography><Typography variant="body2" className="reports-muted">Billed less collected</Typography></Box></Stack></CardContent></Card></Grid>
+        <Grid item xs={12}><Card sx={{ background: palette.panel, border: `1px solid ${palette.border}`, borderRadius: 3 }}><CardHeader title="Invoice collection profile" subheader="Compare each invoice's value with cash collected. Click a point to inspect the source invoice and its outstanding balance." subheaderTypographyProps={{ sx: { color: palette.textSecondary } }} /><CardContent sx={{ pt: 0, minWidth: 0 }}>{collectionProfile.length ? <ReactApexChart type="scatter" options={collectionScatterOptions} series={[{ name: 'Invoices', data: collectionProfile }]} height={320} /> : <Box className="ui-empty-state"><strong>No invoice collection data in this range</strong><p>Issued invoices will appear here once they have been recorded.</p></Box>}</CardContent></Card></Grid>
         <Grid item xs={12}><Card sx={{ background: palette.panel, border: `1px solid ${palette.border}`, borderRadius: 3 }}><CardHeader title="Financial ledger" subheader={`${ledgerRows.length} source transaction${ledgerRows.length === 1 ? '' : 's'} · sortable and filterable · click a row for trace details`} subheaderTypographyProps={{ sx: { color: palette.textSecondary } }} /><CardContent sx={{ pt: 0 }}><DataTable columns={ledgerColumns} rows={ledgerRows} getRowId={(row) => row.id} maxHeight={600} minHeight={420} defaultOrderBy="date" defaultOrder="desc" onRowClick={openLedgerDrilldown} emptyMessage="No ledger transactions recorded for this period." /></CardContent></Card></Grid>
       </Grid>
 

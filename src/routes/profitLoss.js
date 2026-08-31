@@ -51,6 +51,8 @@ const buildInvoiceEntries = (invoices = []) => invoices.map((invoice) => {
     status: invoice.status || 'issued',
     total_paid: Number(invoice.total_paid || invoice.totals?.paid || 0),
     balance_due: Number(invoice.balance_due ?? invoice.totals?.balance ?? 0),
+    due_date: invoice.due_date,
+    paid_at: invoice.paid_at,
     currency: invoice.currency || 'GBP',
     createdAt: invoice.createdAt,
     updatedAt: invoice.updatedAt,
@@ -129,11 +131,11 @@ router.get(
         if (scopedPatientIdsSet.size > 0) {
           invoiceQuery.patient_id = { $in: Array.from(scopedPatientIdsSet) };
           invoices = await Invoice.find(invoiceQuery)
-            .select('invoice_id invoice_number issue_date totals total_due total_paid balance_due status currency createdAt updatedAt');
+            .select('invoice_id invoice_number issue_date due_date paid_at totals total_due total_paid balance_due status currency createdAt updatedAt');
         }
       } else {
         invoices = await Invoice.find(invoiceQuery)
-          .select('invoice_id invoice_number issue_date totals total_due total_paid balance_due status currency createdAt updatedAt');
+          .select('invoice_id invoice_number issue_date due_date paid_at totals total_due total_paid balance_due status currency createdAt updatedAt');
       }
 
       const payments = await Payment.find({
@@ -427,11 +429,11 @@ router.get(
         if (scopedPatientIdsSet.size > 0) {
           invoiceQuery.patient_id = { $in: Array.from(scopedPatientIdsSet) };
           invoices = await Invoice.find(invoiceQuery)
-            .select('invoice_id invoice_number issue_date totals total_due total_paid balance_due status currency createdAt updatedAt');
+            .select('invoice_id invoice_number issue_date due_date paid_at totals total_due total_paid balance_due status currency createdAt updatedAt');
         }
       } else {
         invoices = await Invoice.find(invoiceQuery)
-          .select('invoice_id invoice_number issue_date totals total_due total_paid balance_due status currency createdAt updatedAt');
+          .select('invoice_id invoice_number issue_date due_date paid_at totals total_due total_paid balance_due status currency createdAt updatedAt');
       }
 
       const payments = await Payment.find({

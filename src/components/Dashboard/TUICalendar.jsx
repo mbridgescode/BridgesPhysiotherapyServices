@@ -1,51 +1,45 @@
-// src/components/Dashboard/TUICalendar.js
-
-import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
-import formatDate from 'date-fns/format';
-import getDay from 'date-fns/getDay';
-import isSameDay from 'date-fns/isSameDay';
-import parse from 'date-fns/parse';
-import startOfDay from 'date-fns/startOfDay';
-import endOfDay from 'date-fns/endOfDay';
-import endOfMonth from 'date-fns/endOfMonth';
-import endOfWeek from 'date-fns/endOfWeek';
-import startOfMonth from 'date-fns/startOfMonth';
-import startOfWeek from 'date-fns/startOfWeek';
-import enGB from 'date-fns/locale/en-GB';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
-import '../../styles/calendarOverrides.css';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import FullCalendar from '@fullcalendar/react';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import interactionPlugin from '@fullcalendar/interaction';
+import listPlugin from '@fullcalendar/list';
+import timeGridPlugin from '@fullcalendar/timegrid';
 import {
+  Alert,
   Box,
   Button,
-  ButtonGroup,
+  Checkbox,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
+  FormControl,
+  FormControlLabel,
   IconButton,
-  Stack,
-  Typography,
-  TextField,
+  InputLabel,
   MenuItem,
+  Select,
+  Snackbar,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import TodayIcon from '@mui/icons-material/Today';
+import CloseIcon from '@mui/icons-material/Close';
 import apiClient from '../../utils/apiClient';
-import CustomPopup from './CustomPopup';
 import { AppointmentsContext } from '../../context/AppointmentsContext';
 import { UserContext } from '../../context/UserContext';
 import useTherapists from '../../hooks/useTherapists';
-
-const localizer = dateFnsLocalizer({
-  format: formatDate,
-  parse,
-  startOfWeek,
-  getDay,
-  locales: { 'en-GB': enGB },
-});
+import CustomPopup from './CustomPopup';
+import '../../styles/calendarOverrides.css';
 
 const STATUS_COLORS = {
   scheduled: '#60a5fa',
@@ -56,117 +50,132 @@ const STATUS_COLORS = {
   cancelled_same_day: '#f87171',
 };
 
-const VIEW_LABELS = {
-  [Views.DAY]: 'Day',
-  [Views.WEEK]: 'Week',
-  [Views.MONTH]: 'Month',
+const STATUS_LABELS = {
+  scheduled: 'Scheduled',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  cancelled_by_patient: 'Cancelled by patient',
+  cancelled_by_therapist: 'Cancelled by clinician',
+  cancelled_same_day: 'Cancelled same day',
 };
+
+const VIEW_OPTIONS = [
+  { value: 'dayGridMonth', label: 'Month' },
+  { value: 'timeGridWeek', label: 'Week' },
+  { value: 'timeGridDay', label: 'Day' },
+  { value: 'listWeek', label: 'Agenda' },
+];
 
 const getPatientName = (appointment) => (
   [appointment?.first_name, appointment?.surname].filter(Boolean).join(' ') || 'Patient'
 );
 
-const getStatusLabel = (status = 'scheduled') => status.replaceAll('_', ' ');
+const getStatusLabel = (status = 'scheduled') => (
+  STATUS_LABELS[status] || status.replaceAll('_', ' ')
+);
+
+const getStatusClass = (status = 'scheduled') => status.replaceAll('_', '-');
+
+const formatCalendarDateTime = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Date to be confirmed';
+  }
+  return `${date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })} at ${date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+const formatDuration = (minutes) => {
+  const value = Number(minutes);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '60 minutes';
+  }
+  if (value % 60 === 0) {
+    return `${value / 60} hour${value === 60 ? '' : 's'}`;
+  }
+  return `${value} minutes`;
+};
 
 const buildEvent = (appointment) => {
   const start = new Date(appointment.date);
-  const durationMinutes = appointment.duration_minutes || 60;
+  if (Number.isNaN(start.getTime())) {
+    return null;
+  }
+  const durationMinutes = Number(appointment.duration_minutes) || 60;
   const end = new Date(start.getTime() + durationMinutes * 60000);
+  const status = appointment.status || 'scheduled';
+  const color = STATUS_COLORS[status] || STATUS_COLORS.scheduled;
 
   return {
-    id: appointment.appointment_id,
+    id: String(appointment.appointment_id),
     title: `${appointment.treatment_description || 'Appointment'} - ${getPatientName(appointment)}`,
     start,
     end,
-    patientName: getPatientName(appointment),
-    treatment: appointment.treatment_description || 'Appointment',
-    location: appointment.location || 'Clinic room',
-    phone: appointment.contact || 'N/A',
-    email: appointment.email || appointment.patient_email || 'Not provided',
-    body: appointment.treatment_notes || 'No additional notes recorded.',
-    status: appointment.status || 'scheduled',
-    resource: appointment,
+    backgroundColor: `${color}26`,
+    borderColor: `${color}99`,
+    textColor: '#f8fafc',
+    extendedProps: {
+      patientName: getPatientName(appointment),
+      treatment: appointment.treatment_description || 'Appointment',
+      location: appointment.location || appointment.room || 'Clinic room',
+      phone: appointment.contact || 'N/A',
+      email: appointment.email || appointment.patient_email || 'Not provided',
+      body: appointment.treatment_notes || 'No additional notes recorded.',
+      status,
+      durationMinutes,
+      resource: appointment,
+    },
   };
 };
 
-const CalendarEvent = ({ event }) => (
-  <Box className="calendar-event">
-    <span className="calendar-event__time">{formatDate(event.start, 'HH:mm')}</span>
-    <strong className="calendar-event__patient">{event.patientName}</strong>
-    <span className="calendar-event__treatment">{event.treatment}</span>
-  </Box>
-);
-
-const CalendarToolbar = ({ label, onNavigate, onView, view, views }) => {
-  const availableViews = (Array.isArray(views) ? views : Object.keys(views || {}))
-    .filter((option) => VIEW_LABELS[option]);
+const CalendarEvent = ({ eventInfo }) => {
+  const { event, timeText } = eventInfo;
+  const {
+    patientName,
+    treatment,
+    status = 'scheduled',
+  } = event.extendedProps || {};
+  const statusClass = getStatusClass(status);
 
   return (
-    <Box className="calendar-toolbar">
-      <Box className="calendar-toolbar__date">
-        <Box className="calendar-toolbar__title-row">
-          <CalendarMonthIcon fontSize="small" aria-hidden="true" />
-          <Typography component="span" className="calendar-toolbar__label">
-            {label}
-          </Typography>
-        </Box>
-        <Typography component="span" className="calendar-toolbar__hint">
-          Select an appointment to view its details
-        </Typography>
+    <Box component="span" className={`calendar-event calendar-event--${statusClass}`}>
+      <Box component="span" className="calendar-event__meta">
+        <span className="calendar-event__time">{timeText || 'All day'}</span>
+        <span className="calendar-event__status">{getStatusLabel(status)}</span>
       </Box>
-      <Stack className="calendar-toolbar__actions" direction="row" spacing={1} alignItems="center">
-        <ButtonGroup size="small" variant="outlined" aria-label="Calendar navigation">
-          <Tooltip title="Previous period">
-            <IconButton onClick={() => onNavigate('PREV')} aria-label="Previous period" size="small">
-              <ChevronLeftIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Button onClick={() => onNavigate('TODAY')} startIcon={<TodayIcon fontSize="small" />}>
-            Today
-          </Button>
-          <Tooltip title="Next period">
-            <IconButton onClick={() => onNavigate('NEXT')} aria-label="Next period" size="small">
-              <ChevronRightIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </ButtonGroup>
-        <ButtonGroup size="small" variant="outlined" aria-label="Calendar view">
-          {availableViews.map((option) => (
-            <Button
-              key={option}
-              onClick={() => onView(option)}
-              variant={view === option ? 'contained' : 'outlined'}
-              aria-pressed={view === option}
-            >
-              {VIEW_LABELS[option]}
-            </Button>
-          ))}
-        </ButtonGroup>
-      </Stack>
+      <strong className="calendar-event__patient">{patientName}</strong>
+      <span className="calendar-event__treatment">{treatment}</span>
     </Box>
   );
 };
 
+const getInitialView = () => (
+  typeof window !== 'undefined' && window.innerWidth < 720 ? 'timeGridDay' : 'timeGridWeek'
+);
+
 const TUICalendar = () => {
-  const { refreshVersion } = useContext(AppointmentsContext);
+  const { refreshVersion, refreshAppointments } = useContext(AppointmentsContext);
   const { userData } = useContext(UserContext);
+  const { therapists } = useTherapists();
+  const calendarRef = useRef(null);
+  const rangeCacheRef = useRef(new Map());
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const rangeCacheRef = useRef(new Map());
-  const { therapists } = useTherapists();
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 720);
+  const [calendarView, setCalendarView] = useState(getInitialView);
+  const [calendarTitle, setCalendarTitle] = useState('Clinic schedule');
+  const [calendarRange, setCalendarRange] = useState(null);
+  const [selectedClinician, setSelectedClinician] = useState('all');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isPopupVisible, setPopupVisible] = useState(false);
-  const [selectedClinician, setSelectedClinician] = useState('all');
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 720);
-  const [calendarDate, setCalendarDate] = useState(() => new Date());
-  const [calendarView, setCalendarView] = useState(() => (
-    typeof window !== 'undefined' && window.innerWidth < 720 ? Views.DAY : Views.WEEK
-  ));
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [pendingMutation, setPendingMutation] = useState(null);
+  const [sendRescheduleEmail, setSendRescheduleEmail] = useState(true);
+  const [savingMutation, setSavingMutation] = useState(false);
+  const [mutationError, setMutationError] = useState('');
+  const [toast, setToast] = useState({ open: false, severity: 'success', message: '' });
 
-  useEffect(() => {
-    rangeCacheRef.current.clear();
-  }, [refreshVersion]);
+  const canManageSchedule = ['admin', 'therapist', 'receptionist'].includes(userData?.role);
 
   useEffect(() => {
     const updateViewport = () => setIsMobile(window.innerWidth < 720);
@@ -174,39 +183,38 @@ const TUICalendar = () => {
     return () => window.removeEventListener('resize', updateViewport);
   }, []);
 
-  const calendarViews = useMemo(
-    () => (isMobile ? [Views.DAY, Views.MONTH] : [Views.DAY, Views.WEEK, Views.MONTH]),
-    [isMobile],
-  );
+  useEffect(() => {
+    rangeCacheRef.current.clear();
+  }, [refreshVersion, refreshKey]);
+
+  const clinicianOptions = useMemo(() => {
+    const base = therapists.map((therapist) => ({
+      value: therapist.employeeID ? `employee:${therapist.employeeID}` : `user:${therapist.id}`,
+      label: therapist.name,
+      employeeID: therapist.employeeID,
+      userId: therapist.id,
+    }));
+    return [{ value: 'all', label: 'All clinicians' }, ...base];
+  }, [therapists]);
+
+  const handleDatesSet = useCallback((info) => {
+    const nextFrom = info.start.toISOString();
+    const nextTo = new Date(info.end.getTime() - 1).toISOString();
+    setCalendarTitle(info.view.title);
+    setCalendarView((previous) => (previous === info.view.type ? previous : info.view.type));
+    setCalendarRange((previous) => {
+      if (previous?.from === nextFrom && previous?.to === nextTo) {
+        return previous;
+      }
+      return { from: nextFrom, to: nextTo };
+    });
+  }, []);
 
   useEffect(() => {
-    if (!calendarViews.includes(calendarView)) {
-      setCalendarView(calendarViews[0]);
-    }
-  }, [calendarView, calendarViews]);
-
-  const calendarRange = useMemo(() => {
-    if (calendarView === Views.DAY) {
-      return {
-        from: startOfDay(calendarDate).toISOString(),
-        to: endOfDay(calendarDate).toISOString(),
-      };
+    if (!calendarRange) {
+      return undefined;
     }
 
-    if (calendarView === Views.MONTH) {
-      return {
-        from: startOfWeek(startOfMonth(calendarDate), { weekStartsOn: 1 }).toISOString(),
-        to: endOfWeek(endOfMonth(calendarDate), { weekStartsOn: 1 }).toISOString(),
-      };
-    }
-
-    return {
-      from: startOfWeek(calendarDate, { weekStartsOn: 1 }).toISOString(),
-      to: endOfWeek(calendarDate, { weekStartsOn: 1 }).toISOString(),
-    };
-  }, [calendarDate, calendarView]);
-
-  useEffect(() => {
     const cacheKey = `${calendarRange.from}|${calendarRange.to}`;
     const cachedAppointments = rangeCacheRef.current.get(cacheKey);
     if (cachedAppointments) {
@@ -221,7 +229,10 @@ const TUICalendar = () => {
       setLoading(true);
       try {
         const response = await apiClient.get('/api/schedule/calendar', {
-          params: calendarRange,
+          params: {
+            ...calendarRange,
+            includeCancelled: false,
+          },
         });
         if (!isMounted) {
           return;
@@ -230,9 +241,9 @@ const TUICalendar = () => {
         rangeCacheRef.current.set(cacheKey, nextAppointments);
         setAppointments(nextAppointments);
         setError(null);
-      } catch (err) {
+      } catch (requestError) {
         if (isMounted) {
-          setError('Failed to load calendar');
+          setError('Failed to load the calendar. Try refreshing the schedule.');
         }
       } finally {
         if (isMounted) {
@@ -245,19 +256,9 @@ const TUICalendar = () => {
     return () => {
       isMounted = false;
     };
-  }, [calendarRange, refreshVersion]);
+  }, [calendarRange, refreshVersion, refreshKey]);
 
-  const clinicianOptions = useMemo(() => {
-    const base = therapists.map((therapist) => ({
-      value: therapist.employeeID ? `employee:${therapist.employeeID}` : `user:${therapist.id}`,
-      label: therapist.name,
-      employeeID: therapist.employeeID,
-      userId: therapist.id,
-    }));
-    return [{ value: 'all', label: 'All clinicians' }, ...base];
-  }, [therapists]);
-
-  const matchAppointmentToUser = (appointment, user) => {
+  const matchAppointmentToUser = useCallback((appointment, user) => {
     if (!user) {
       return false;
     }
@@ -270,9 +271,9 @@ const TUICalendar = () => {
       || (appointment.therapistId && appointment.therapistId === user.id)
       || (appointment.therapist && appointment.therapist.toString && appointment.therapist.toString() === user.id);
     return employeeMatches || therapistMatches;
-  };
+  }, []);
 
-  const matchAppointmentToSelection = (appointment) => {
+  const matchAppointmentToSelection = useCallback((appointment) => {
     if (selectedClinician === 'all') {
       return true;
     }
@@ -289,7 +290,7 @@ const TUICalendar = () => {
       );
     }
     return true;
-  };
+  }, [selectedClinician]);
 
   const filteredAppointments = useMemo(() => {
     const base = Array.isArray(appointments) ? appointments : [];
@@ -297,10 +298,10 @@ const TUICalendar = () => {
       return base.filter((appointment) => matchAppointmentToSelection(appointment));
     }
     return base.filter((appointment) => matchAppointmentToUser(appointment, userData));
-  }, [appointments, userData, selectedClinician]);
+  }, [appointments, matchAppointmentToSelection, matchAppointmentToUser, userData]);
 
   const events = useMemo(
-    () => filteredAppointments.map(buildEvent).sort((a, b) => a.start - b.start),
+    () => filteredAppointments.map(buildEvent).filter(Boolean).sort((a, b) => a.start - b.start),
     [filteredAppointments],
   );
 
@@ -310,29 +311,139 @@ const TUICalendar = () => {
     return (upcoming.length ? upcoming : events).slice(0, 6);
   }, [events]);
 
-  const minTime = useMemo(() => {
-    const value = startOfDay(new Date());
-    value.setHours(7, 0, 0, 0);
-    return value;
-  }, []);
-  const maxTime = useMemo(() => {
-    const value = startOfDay(new Date());
-    value.setHours(20, 0, 0, 0);
-    return value;
-  }, []);
+  useEffect(() => {
+    if (!isMobile || !calendarRef.current) {
+      return;
+    }
+    const api = calendarRef.current.getApi();
+    if (calendarView === 'timeGridWeek') {
+      api.changeView('timeGridDay');
+      return;
+    }
+    if (calendarView === 'timeGridDay' || calendarView === 'dayGridMonth' || calendarView === 'listWeek') {
+      return;
+    }
+    api.changeView('timeGridDay');
+  }, [isMobile, calendarView]);
 
-  if (loading) {
-    return <CircularProgress />;
-  }
-
-  if (error) {
-    return <Typography variant="h6">Error loading calendar</Typography>;
-  }
-
-  const handleSelectEvent = (event) => {
-    setSelectedAppointment(event);
-    setPopupVisible(true);
+  const navigateCalendar = (action) => {
+    const api = calendarRef.current?.getApi();
+    if (!api) {
+      return;
+    }
+    if (action === 'today') {
+      api.today();
+    } else if (action === 'previous') {
+      api.prev();
+    } else {
+      api.next();
+    }
   };
+
+  const changeCalendarView = (_event, nextView) => {
+    if (!nextView) {
+      return;
+    }
+    calendarRef.current?.getApi().changeView(nextView);
+  };
+
+  const handleSelectEvent = useCallback((info) => {
+    info.jsEvent?.preventDefault();
+    const { event } = info;
+    const props = event.extendedProps || {};
+    setSelectedAppointment({
+      title: event.title,
+      start: event.start,
+      patientName: props.patientName,
+      treatment: props.treatment,
+      location: props.location,
+      phone: props.phone,
+      email: props.email,
+      body: props.body,
+      status: props.status,
+      durationMinutes: props.durationMinutes,
+    });
+    setPopupVisible(true);
+  }, []);
+
+  const handleCalendarMutation = useCallback((changeInfo) => {
+    const { event } = changeInfo;
+    const appointment = event.extendedProps?.resource;
+    if (!appointment || !event.start) {
+      changeInfo.revert();
+      return;
+    }
+    const end = event.end || new Date(event.start.getTime() + (Number(appointment.duration_minutes) || 60) * 60000);
+    const durationMinutes = Math.max(15, Math.round((end.getTime() - event.start.getTime()) / 60000));
+    changeInfo.revert();
+    setMutationError('');
+    setSendRescheduleEmail(true);
+    setPendingMutation({
+      appointment,
+      appointmentId: appointment.appointment_id,
+      nextDate: event.start.toISOString(),
+      nextDuration: durationMinutes,
+    });
+  }, []);
+
+  const cancelPendingMutation = () => {
+    if (!savingMutation) {
+      setPendingMutation(null);
+      setMutationError('');
+    }
+  };
+
+  const savePendingMutation = async () => {
+    if (!pendingMutation) {
+      return;
+    }
+    setSavingMutation(true);
+    setMutationError('');
+    try {
+      const response = await apiClient.put(`/api/appointments/${pendingMutation.appointmentId}`, {
+        date: pendingMutation.nextDate,
+        duration_minutes: pendingMutation.nextDuration,
+        sendRescheduleEmail,
+      });
+      const updated = response.data?.appointment;
+      if (updated) {
+        setAppointments((previous) => previous.map((appointment) => (
+          appointment.appointment_id === updated.appointment_id
+            ? { ...appointment, ...updated }
+            : appointment
+        )));
+      }
+      rangeCacheRef.current.clear();
+      setRefreshKey((previous) => previous + 1);
+      refreshAppointments?.();
+      setPendingMutation(null);
+      setToast({
+        open: true,
+        severity: 'success',
+        message: sendRescheduleEmail ? 'Appointment moved and confirmation email queued.' : 'Appointment moved successfully.',
+      });
+    } catch (requestError) {
+      setMutationError(requestError?.response?.data?.message || 'Unable to save this schedule change.');
+    } finally {
+      setSavingMutation(false);
+    }
+  };
+
+  const renderEventContent = useCallback((eventInfo) => <CalendarEvent eventInfo={eventInfo} />, []);
+
+  const eventClassNames = useCallback((arg) => {
+    const status = arg.event.extendedProps?.status || 'scheduled';
+    return [`calendar-event-status--${getStatusClass(status)}`];
+  }, []);
+
+  const eventDidMount = useCallback((info) => {
+    const props = info.event.extendedProps || {};
+    info.el.setAttribute('title', `${props.patientName || 'Patient'} · ${props.treatment || 'Appointment'} · ${getStatusLabel(props.status)}`);
+  }, []);
+
+  const calendarHeight = calendarView === 'dayGridMonth'
+    ? 'auto'
+    : (isMobile ? 650 : 760);
 
   return (
     <Box className="calendar-shell">
@@ -345,75 +456,136 @@ const TUICalendar = () => {
             {events.length} {events.length === 1 ? 'appointment' : 'appointments'} in this schedule
           </Typography>
         </Box>
-        <Stack className="calendar-shell__filters" direction="row" spacing={1.5} alignItems="center">
+        <Stack className="calendar-shell__filters" direction="row" spacing={1.25} alignItems="center">
           <Box className="calendar-legend" aria-label="Appointment status legend">
             {['scheduled', 'completed', 'cancelled'].map((status) => (
               <Box className="calendar-legend__item" key={status}>
                 <span className="calendar-legend__dot" style={{ backgroundColor: STATUS_COLORS[status] }} />
-                <span>{status}</span>
+                <span>{getStatusLabel(status)}</span>
               </Box>
             ))}
           </Box>
           {userData?.role === 'admin' && (
-            <TextField
-              select
-              label="Clinician"
-              value={selectedClinician}
-              onChange={(event) => setSelectedClinician(event.target.value)}
-              size="small"
-              sx={{ minWidth: { xs: 0, sm: 200 }, width: { xs: '100%', sm: 'auto' } }}
-            >
-              {clinicianOptions.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
+            <FormControl size="small" className="calendar-clinician-filter">
+              <InputLabel>Clinician</InputLabel>
+              <Select
+                label="Clinician"
+                value={selectedClinician}
+                onChange={(event) => setSelectedClinician(event.target.value)}
+              >
+                {clinicianOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           )}
         </Stack>
       </Box>
+
       <Divider className="calendar-shell__divider" />
+
+      <Box className="calendar-toolbar" aria-label="Calendar controls">
+        <Stack className="calendar-toolbar__navigation" direction="row" spacing={0.75} alignItems="center">
+          <Tooltip title="Previous period">
+            <IconButton onClick={() => navigateCalendar('previous')} aria-label="Previous period" size="small">
+              <ChevronLeftIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Button onClick={() => navigateCalendar('today')} startIcon={<TodayIcon fontSize="small" />}>
+            Today
+          </Button>
+          <Tooltip title="Next period">
+            <IconButton onClick={() => navigateCalendar('next')} aria-label="Next period" size="small">
+              <ChevronRightIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+        <Box className="calendar-toolbar__date">
+          <Box className="calendar-toolbar__title-row">
+            <CalendarMonthIcon fontSize="small" aria-hidden="true" />
+            <Typography component="span" className="calendar-toolbar__label">
+              {calendarTitle}
+            </Typography>
+          </Box>
+          <Typography component="span" className="calendar-toolbar__hint">
+            Select an appointment for details · drag or resize to propose a change
+          </Typography>
+        </Box>
+        <ToggleButtonGroup
+          className="calendar-toolbar__views"
+          size="small"
+          value={calendarView}
+          exclusive
+          onChange={changeCalendarView}
+          aria-label="Calendar view"
+        >
+          {VIEW_OPTIONS.map((option) => (
+            <ToggleButton key={option.value} value={option.value} aria-label={`${option.label} view`}>
+              {option.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Box>
+
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
       <Box className="calendar-shell__layout">
         <Box className="calendar-shell__calendar-panel">
-          <Calendar
-            localizer={localizer}
-            culture="en-GB"
+          {loading && (
+            <Box className="calendar-panel__loading" role="status" aria-live="polite">
+              <CircularProgress size={22} />
+              <Typography variant="body2">Refreshing schedule…</Typography>
+            </Box>
+          )}
+          {!loading && !events.length && (
+            <Box className="calendar-empty-banner">
+              <strong>No appointments in this view</strong>
+              <span>Use the appointment manager below to create or edit bookings.</span>
+            </Box>
+          )}
+          <FullCalendar
+            ref={calendarRef}
+            plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
+            initialView={getInitialView()}
+            initialDate={new Date()}
+            headerToolbar={false}
             events={events}
-            startAccessor="start"
-            endAccessor="end"
-            date={calendarDate}
-            onNavigate={setCalendarDate}
-            view={calendarView}
-            onView={setCalendarView}
-            style={{ height: isMobile ? 'clamp(520px, calc(100vh - 300px), 720px)' : 'clamp(620px, calc(100vh - 270px), 820px)' }}
-            min={minTime}
-            max={maxTime}
-            views={calendarViews}
-            components={{
-              toolbar: (toolbarProps) => <CalendarToolbar {...toolbarProps} />,
-              event: CalendarEvent,
-            }}
-            eventPropGetter={(event) => {
-              const color = STATUS_COLORS[event.status] || STATUS_COLORS.scheduled;
-              return {
-                style: {
-                  backgroundColor: color,
-                  borderRadius: 8,
-                  border: 'none',
-                  borderLeft: `3px solid ${color}`,
-                  color: '#06211f',
-                  boxShadow: '0 6px 15px rgba(0,0,0,0.18)',
-                },
-              };
-            }}
-            dayPropGetter={(date) => ({
-              className: isSameDay(date, new Date()) ? 'calendar-day--today' : undefined,
-            })}
-            onSelectEvent={handleSelectEvent}
-            popup
-            selectable={false}
+            height={calendarHeight}
+            expandRows={false}
+            firstDay={1}
+            weekends
+            nowIndicator
+            stickyHeaderDates
+            dayMaxEvents={4}
+            moreLinkClick="popover"
+            eventDisplay="block"
+            eventOrder="start,-duration,title"
+            slotMinTime="07:00:00"
+            slotMaxTime="20:00:00"
+            scrollTime="08:00:00"
+            slotDuration="00:30:00"
+            slotLabelInterval="01:00:00"
+            slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
+            dayHeaderFormat={{ weekday: 'short', day: 'numeric', month: 'short', omitCommas: true }}
+            businessHours={{ daysOfWeek: [1, 2, 3, 4, 5], startTime: '07:00', endTime: '20:00' }}
+            locale="en-gb"
+            editable={canManageSchedule}
+            eventStartEditable={canManageSchedule}
+            eventDurationEditable={canManageSchedule}
+            eventResizableFromStart={false}
+            eventContent={renderEventContent}
+            eventClassNames={eventClassNames}
+            eventDidMount={eventDidMount}
+            eventClick={handleSelectEvent}
+            eventDrop={handleCalendarMutation}
+            eventResize={handleCalendarMutation}
+            datesSet={handleDatesSet}
+            noEventsContent="No appointments in this view"
           />
         </Box>
+
         <Box component="aside" className="calendar-shell__agenda" aria-label="Upcoming appointments">
           <Box className="calendar-agenda__heading">
             <Box>
@@ -423,46 +595,100 @@ const TUICalendar = () => {
             <Chip size="small" label={events.length} />
           </Box>
           <Box className="calendar-agenda__list">
-            {upcomingEvents.length ? upcomingEvents.map((event) => (
-              <Box
-                component="button"
-                type="button"
-                className="calendar-agenda__item"
-                key={event.id}
-                onClick={() => handleSelectEvent(event)}
-              >
-                <Box className="calendar-agenda__item-time">
-                  <strong>{formatDate(event.start, 'EEE')}</strong>
-                  <span>{formatDate(event.start, 'd MMM')}</span>
+            {upcomingEvents.length ? upcomingEvents.map((event) => {
+              const props = event.extendedProps || {};
+              return (
+                <Box
+                  component="button"
+                  type="button"
+                  className="calendar-agenda__item"
+                  key={event.id}
+                  onClick={() => handleSelectEvent({ event, jsEvent: { preventDefault: () => {} } })}
+                >
+                  <Box className="calendar-agenda__item-time">
+                    <strong>{event.start.toLocaleDateString('en-GB', { weekday: 'short' })}</strong>
+                    <span>{event.start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                  </Box>
+                  <Box className="calendar-agenda__item-copy">
+                    <strong>{props.patientName}</strong>
+                    <span>{event.start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · {props.treatment}</span>
+                    <span>{props.location}</span>
+                  </Box>
+                  <span
+                    className="calendar-agenda__status"
+                    style={{ backgroundColor: STATUS_COLORS[props.status] || STATUS_COLORS.scheduled }}
+                    title={getStatusLabel(props.status)}
+                  />
                 </Box>
-                <Box className="calendar-agenda__item-copy">
-                  <strong>{event.patientName}</strong>
-                  <span>{formatDate(event.start, 'HH:mm')} · {event.treatment}</span>
-                  <span>{event.location}</span>
-                </Box>
-                <span
-                  className="calendar-agenda__status"
-                  style={{ backgroundColor: STATUS_COLORS[event.status] || STATUS_COLORS.scheduled }}
-                  title={getStatusLabel(event.status)}
-                />
-              </Box>
-            )) : (
+              );
+            }) : (
               <Typography variant="body2" className="calendar-agenda__empty">
                 No appointments match this filter.
               </Typography>
             )}
           </Box>
           <Typography variant="caption" className="calendar-agenda__hint">
-            Choose an appointment in the calendar or this list to view its details.
+            Click an appointment for details. Moving or resizing one will ask you to confirm the change.
           </Typography>
         </Box>
       </Box>
+
       {isPopupVisible && (
         <CustomPopup
           appointment={selectedAppointment}
           onClose={() => setPopupVisible(false)}
         />
       )}
+
+      <Dialog
+        open={Boolean(pendingMutation)}
+        onClose={cancelPendingMutation}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ pr: 6 }}>
+          Save schedule change?
+          <IconButton aria-label="Close" onClick={cancelPendingMutation} disabled={savingMutation} sx={{ position: 'absolute', right: 8, top: 8 }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {pendingMutation && (
+            <Stack spacing={2}>
+              <Typography variant="body1">
+                Move <strong>{getPatientName(pendingMutation.appointment)}</strong> to <strong>{formatCalendarDateTime(pendingMutation.nextDate)}</strong>.
+              </Typography>
+              <Box className="calendar-change-summary">
+                <Typography variant="caption">New appointment length</Typography>
+                <Typography variant="h6">{formatDuration(pendingMutation.nextDuration)}</Typography>
+                <Typography variant="body2">{pendingMutation.appointment.treatment_description || 'Appointment'}</Typography>
+              </Box>
+              <FormControlLabel
+                control={<Checkbox checked={sendRescheduleEmail} onChange={(event) => setSendRescheduleEmail(event.target.checked)} />}
+                label="Send a reschedule confirmation email to the patient"
+              />
+              {mutationError && <Alert severity="error">{mutationError}</Alert>}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={cancelPendingMutation} disabled={savingMutation}>Cancel</Button>
+          <Button onClick={savePendingMutation} variant="contained" disabled={savingMutation}>
+            {savingMutation ? 'Saving…' : 'Save change'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={4500}
+        onClose={() => setToast((previous) => ({ ...previous, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={toast.severity} onClose={() => setToast((previous) => ({ ...previous, open: false }))}>
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
