@@ -338,6 +338,9 @@ const ProfitLoss = () => {
       <Typography variant="h5" gutterBottom>
         Profit &amp; Loss
       </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: -2 }}>
+        Review accrual-style profit and loss entries here; use Reports for trends, drill-downs and the filing-ready export pack.
+      </Typography>
       <Card className={classes.section}>
         <CardContent>
           <Grid container spacing={2}>
@@ -367,16 +370,16 @@ const ProfitLoss = () => {
               </Button>
             </Grid>
             <Grid item xs={12} md={3} display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
-              <Tooltip title="Export CSV">
+              <Tooltip title="Export CSV ledger">
                 <span>
-                  <IconButton onClick={() => handleExport('csv')}>
+                  <IconButton aria-label="Export CSV ledger" onClick={() => handleExport('csv')}>
                     <DownloadIcon />
                   </IconButton>
                 </span>
               </Tooltip>
-              <Tooltip title="Export XLSX">
+              <Tooltip title="Export XLSX filing pack">
                 <span>
-                  <IconButton onClick={() => handleExport('xlsx')}>
+                  <IconButton aria-label="Export XLSX filing pack" onClick={() => handleExport('xlsx')}>
                     <DownloadIcon />
                   </IconButton>
                 </span>
