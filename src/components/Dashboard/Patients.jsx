@@ -220,6 +220,8 @@ const Patients = ({ userData }) => {
         const params = {
           limit: PAGE_SIZE,
           offset: page * PAGE_SIZE,
+          summary: true,
+          includeAppointments: Boolean(searchQuery),
         };
         if (patientScope === 'all') {
           params.view = 'all';

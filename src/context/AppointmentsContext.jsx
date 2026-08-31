@@ -1,5 +1,6 @@
 import React, {
   createContext,
+  useRef,
   useState,
   useEffect,
   useCallback,
@@ -17,6 +18,7 @@ export const AppointmentsProvider = ({ children, enabled = true }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [token, setToken] = useState(() => getAuthToken());
+  const loadedTokenRef = useRef(null);
 
   useEffect(() => {
     const unsubscribe = subscribeToAuthToken(() => {
@@ -39,21 +41,36 @@ export const AppointmentsProvider = ({ children, enabled = true }) => {
     };
   }, []);
 
-  const fetchAppointments = useCallback(async (activeToken) => {
-    if (!enabled || !activeToken) {
+  const fetchAppointments = useCallback(async (activeToken, force = false) => {
+    if (!activeToken) {
+      loadedTokenRef.current = null;
       setAppointments([]);
       setError(null);
       setLoading(false);
       return;
     }
 
+    if (!enabled) {
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    if (!force && loadedTokenRef.current === activeToken) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await apiClient.get('/api/appointments');
+      const response = await apiClient.get('/api/appointments', {
+        params: { summary: true },
+      });
       const data = Array.isArray(response.data)
         ? response.data
         : response.data.appointments || [];
       setAppointments(data);
+      loadedTokenRef.current = activeToken;
       setError(null);
     } catch (err) {
       setError('Failed to load appointments');
@@ -64,11 +81,15 @@ export const AppointmentsProvider = ({ children, enabled = true }) => {
   }, [enabled]);
 
   useEffect(() => {
+    if (loadedTokenRef.current !== null && loadedTokenRef.current !== token) {
+      loadedTokenRef.current = null;
+      setAppointments([]);
+    }
     fetchAppointments(token);
   }, [token, fetchAppointments]);
 
   const refreshAppointments = useCallback(() => {
-    fetchAppointments(getAuthToken());
+    fetchAppointments(getAuthToken(), true);
   }, [fetchAppointments]);
 
   return (

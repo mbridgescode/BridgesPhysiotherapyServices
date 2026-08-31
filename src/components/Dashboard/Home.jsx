@@ -128,7 +128,7 @@ const Home = ({ userData }) => {
         params.employeeID = providerEmployeeId;
       }
       const response = await apiClient.get('/api/appointments', {
-        params,
+        params: { ...params, summary: true },
       });
       const payload = Array.isArray(response.data)
         ? response.data

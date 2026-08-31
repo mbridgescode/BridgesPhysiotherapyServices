@@ -1,8 +1,14 @@
 // src/components/Dashboard/TUICalendar.js
 
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Calendar, momentLocalizer, Views } from 'react-big-calendar';
-import moment from 'moment';
+import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
+import formatDate from 'date-fns/format';
+import getDay from 'date-fns/getDay';
+import isSameDay from 'date-fns/isSameDay';
+import parse from 'date-fns/parse';
+import startOfDay from 'date-fns/startOfDay';
+import startOfWeek from 'date-fns/startOfWeek';
+import enGB from 'date-fns/locale/en-GB';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import '../../styles/calendarOverrides.css';
 import {
@@ -28,7 +34,13 @@ import CustomPopup from './CustomPopup';
 import { UserContext } from '../../context/UserContext';
 import useTherapists from '../../hooks/useTherapists';
 
-const localizer = momentLocalizer(moment);
+const localizer = dateFnsLocalizer({
+  format: formatDate,
+  parse,
+  startOfWeek,
+  getDay,
+  locales: { 'en-GB': enGB },
+});
 
 const STATUS_COLORS = {
   scheduled: '#60a5fa',
@@ -74,7 +86,7 @@ const buildEvent = (appointment) => {
 
 const CalendarEvent = ({ event }) => (
   <Box className="calendar-event">
-    <span className="calendar-event__time">{moment(event.start).format('HH:mm')}</span>
+    <span className="calendar-event__time">{formatDate(event.start, 'HH:mm')}</span>
     <strong className="calendar-event__patient">{event.patientName}</strong>
     <span className="calendar-event__treatment">{event.treatment}</span>
   </Box>
@@ -223,8 +235,16 @@ const TUICalendar = () => {
     return (upcoming.length ? upcoming : events).slice(0, 6);
   }, [events]);
 
-  const minTime = useMemo(() => moment().startOf('day').hour(7).toDate(), []);
-  const maxTime = useMemo(() => moment().startOf('day').hour(20).toDate(), []);
+  const minTime = useMemo(() => {
+    const value = startOfDay(new Date());
+    value.setHours(7, 0, 0, 0);
+    return value;
+  }, []);
+  const maxTime = useMemo(() => {
+    const value = startOfDay(new Date());
+    value.setHours(20, 0, 0, 0);
+    return value;
+  }, []);
 
   if (loading) {
     return <CircularProgress />;
@@ -282,6 +302,7 @@ const TUICalendar = () => {
         <Box className="calendar-shell__calendar-panel">
           <Calendar
             localizer={localizer}
+            culture="en-GB"
             events={events}
             startAccessor="start"
             endAccessor="end"
@@ -311,7 +332,7 @@ const TUICalendar = () => {
               };
             }}
             dayPropGetter={(date) => ({
-              className: moment(date).isSame(new Date(), 'day') ? 'calendar-day--today' : undefined,
+              className: isSameDay(date, new Date()) ? 'calendar-day--today' : undefined,
             })}
             onSelectEvent={handleSelectEvent}
             popup
@@ -336,12 +357,12 @@ const TUICalendar = () => {
                 onClick={() => handleSelectEvent(event)}
               >
                 <Box className="calendar-agenda__item-time">
-                  <strong>{moment(event.start).format('ddd')}</strong>
-                  <span>{moment(event.start).format('D MMM')}</span>
+                  <strong>{formatDate(event.start, 'EEE')}</strong>
+                  <span>{formatDate(event.start, 'd MMM')}</span>
                 </Box>
                 <Box className="calendar-agenda__item-copy">
                   <strong>{event.patientName}</strong>
-                  <span>{moment(event.start).format('HH:mm')} · {event.treatment}</span>
+                  <span>{formatDate(event.start, 'HH:mm')} · {event.treatment}</span>
                   <span>{event.location}</span>
                 </Box>
                 <span

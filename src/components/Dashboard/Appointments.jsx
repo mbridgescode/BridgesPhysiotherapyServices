@@ -256,7 +256,7 @@ const Appointments = ({ userData }) => {
     const loadPatients = async () => {
       setPatientsLoading(true);
       try {
-        const params = { limit: 200 };
+        const params = { limit: 200, summary: true };
         if (userData.role === 'therapist') {
           params.view = 'all';
         }
