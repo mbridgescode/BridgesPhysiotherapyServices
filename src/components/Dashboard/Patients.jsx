@@ -235,7 +235,7 @@ const Patients = ({ userData }) => {
           params.search = searchQuery;
         }
 
-        const response = await apiClient.get('/api/patients', { params });
+        const response = await apiClient.get('/api/patients/list', { params });
         if (!isMounted) {
           return;
         }

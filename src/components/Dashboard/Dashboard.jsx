@@ -63,8 +63,7 @@ const Dashboard = () => {
   const drawerWidth = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH);
   const greeting = userData?.name || userData?.username ? `Hi, ${userData.name || userData.username}` : 'Dashboard';
   const activeNavigationItem = getNavigationItemForPath(location.pathname, userData?.role);
-  const appointmentsEnabled = location.pathname === '/dashboard/appointments'
-    || location.pathname.startsWith('/dashboard/patients/');
+  const appointmentsEnabled = location.pathname === '/dashboard/appointments';
   const isBottomActive = (path) => path === '/dashboard'
     ? location.pathname === '/dashboard'
     : location.pathname.startsWith(path);
@@ -99,7 +98,10 @@ const Dashboard = () => {
             </header>
           )}
           <WorkspaceNavigation userData={userData} />
-          <AppointmentsProvider enabled={appointmentsEnabled}>
+          <AppointmentsProvider
+            enabled={appointmentsEnabled}
+            deferInitialLoad={location.pathname === '/dashboard/appointments'}
+          >
             <Suspense fallback={<DashboardRouteLoading />}>
               <Routes>
                 <Route index element={<Home userData={userData} />} />

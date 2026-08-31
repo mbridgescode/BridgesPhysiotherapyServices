@@ -249,7 +249,7 @@ const Appointments = ({ userData }) => {
   });
 
   useEffect(() => {
-    if (!userData) {
+    if (!userData || !createOpen || patients.length > 0) {
       return undefined;
     }
     let isMounted = true;
@@ -260,7 +260,7 @@ const Appointments = ({ userData }) => {
         if (userData.role === 'therapist') {
           params.view = 'all';
         }
-        const response = await apiClient.get('/api/patients', { params });
+        const response = await apiClient.get('/api/patients/list', { params });
         if (isMounted) {
           setPatients(response.data.patients || []);
         }
@@ -276,7 +276,7 @@ const Appointments = ({ userData }) => {
     return () => {
       isMounted = false;
     };
-  }, [userData]);
+  }, [createOpen, patients.length, userData]);
 
   const therapistOptions = useMemo(() => {
     const therapistOnly = therapists.filter((therapist) => therapist.role === 'therapist');
@@ -343,22 +343,27 @@ const Appointments = ({ userData }) => {
   }, [therapistOptions, userData?.employeeID]);
 
   useEffect(() => {
+    if (!createOpen || treatmentOptions.length > 0) {
+      return undefined;
+    }
+
     const loadTreatments = async () => {
       try {
-        const response = await apiClient.get('/api/services');
+        const response = await apiClient.get('/api/appointments/treatments');
         const options = (response.data.services || response.data.treatments || []).map((service) => ({
           ...service,
           treatment_id: service?.treatment_id ?? '',
           description: service?.treatment_description || service?.description || '',
           price: service?.price,
         }));
-    setTreatmentOptions(options);
+        setTreatmentOptions(options);
       } catch (err) {
         console.error('Failed to load treatment catalogue', err);
       }
     };
     loadTreatments();
-  }, []);
+    return undefined;
+  }, [createOpen, treatmentOptions.length]);
 
   const handleDeleteAppointment = useCallback(async (appointmentId) => {
     if (!appointmentId) {

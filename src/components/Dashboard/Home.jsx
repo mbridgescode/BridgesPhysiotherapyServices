@@ -123,12 +123,19 @@ const Home = ({ userData }) => {
     setAppointmentsLoading(true);
     try {
       const params = {};
+      const from = new Date();
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(from);
+      to.setFullYear(to.getFullYear() + 1);
+      to.setHours(23, 59, 59, 999);
+      params.from = from.toISOString();
+      params.to = to.toISOString();
       const providerEmployeeId = selectedProvider?.employeeID ?? userData?.employeeID;
       if (providerEmployeeId) {
         params.employeeID = providerEmployeeId;
       }
-      const response = await apiClient.get('/api/appointments', {
-        params: { ...params, summary: true },
+      const response = await apiClient.get('/api/schedule/calendar', {
+        params,
       });
       const payload = Array.isArray(response.data)
         ? response.data

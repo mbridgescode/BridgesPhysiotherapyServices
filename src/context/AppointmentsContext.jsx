@@ -13,11 +13,12 @@ import {
 
 export const AppointmentsContext = createContext();
 
-export const AppointmentsProvider = ({ children, enabled = true }) => {
+export const AppointmentsProvider = ({ children, enabled = true, deferInitialLoad = false }) => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [token, setToken] = useState(() => getAuthToken());
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const loadedTokenRef = useRef(null);
 
   useEffect(() => {
@@ -63,9 +64,7 @@ export const AppointmentsProvider = ({ children, enabled = true }) => {
 
     setLoading(true);
     try {
-      const response = await apiClient.get('/api/appointments', {
-        params: { summary: true },
-      });
+      const response = await apiClient.get('/api/schedule/table');
       const data = Array.isArray(response.data)
         ? response.data
         : response.data.appointments || [];
@@ -85,10 +84,40 @@ export const AppointmentsProvider = ({ children, enabled = true }) => {
       loadedTokenRef.current = null;
       setAppointments([]);
     }
-    fetchAppointments(token);
-  }, [token, fetchAppointments]);
+
+    if (!deferInitialLoad || typeof window === 'undefined') {
+      fetchAppointments(token);
+      return undefined;
+    }
+
+    if (enabled && token) {
+      setLoading(true);
+    }
+
+    let cancelled = false;
+    const load = () => {
+      if (!cancelled) {
+        fetchAppointments(token);
+      }
+    };
+
+    if (typeof window.requestIdleCallback === 'function') {
+      const idleId = window.requestIdleCallback(load, { timeout: 350 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback?.(idleId);
+      };
+    }
+
+    const timeoutId = window.setTimeout(load, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [deferInitialLoad, fetchAppointments, token]);
 
   const refreshAppointments = useCallback(() => {
+    setRefreshVersion((previous) => previous + 1);
     fetchAppointments(getAuthToken(), true);
   }, [fetchAppointments]);
 
@@ -98,6 +127,7 @@ export const AppointmentsProvider = ({ children, enabled = true }) => {
         appointments,
         setAppointments,
         refreshAppointments,
+        refreshVersion,
         loading,
         error,
       }}

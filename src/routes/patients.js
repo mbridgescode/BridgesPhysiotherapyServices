@@ -137,11 +137,7 @@ router.get(
   },
 );
 
-router.get(
-  '/',
-  authenticate,
-  authorize('admin', 'therapist', 'receptionist'),
-  async (req, res, next) => {
+const listPatients = async (req, res, next) => {
     try {
       const {
         search,
@@ -348,6 +344,22 @@ router.get(
     } catch (error) {
       next(error);
     }
+};
+
+router.get(
+  '/',
+  authenticate,
+  authorize('admin', 'therapist', 'receptionist'),
+  listPatients,
+);
+
+router.get(
+  '/list',
+  authenticate,
+  authorize('admin', 'therapist', 'receptionist'),
+  (req, res, next) => {
+    req.query.summary = 'true';
+    return listPatients(req, res, next);
   },
 );
 

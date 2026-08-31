@@ -1,12 +1,16 @@
 // src/components/Dashboard/TUICalendar.js
 
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
 import formatDate from 'date-fns/format';
 import getDay from 'date-fns/getDay';
 import isSameDay from 'date-fns/isSameDay';
 import parse from 'date-fns/parse';
 import startOfDay from 'date-fns/startOfDay';
+import endOfDay from 'date-fns/endOfDay';
+import endOfMonth from 'date-fns/endOfMonth';
+import endOfWeek from 'date-fns/endOfWeek';
+import startOfMonth from 'date-fns/startOfMonth';
 import startOfWeek from 'date-fns/startOfWeek';
 import enGB from 'date-fns/locale/en-GB';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -29,8 +33,9 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import TodayIcon from '@mui/icons-material/Today';
-import { AppointmentsContext } from '../../context/AppointmentsContext';
+import apiClient from '../../utils/apiClient';
 import CustomPopup from './CustomPopup';
+import { AppointmentsContext } from '../../context/AppointmentsContext';
 import { UserContext } from '../../context/UserContext';
 import useTherapists from '../../hooks/useTherapists';
 
@@ -143,8 +148,12 @@ const CalendarToolbar = ({ label, onNavigate, onView, view, views }) => {
 };
 
 const TUICalendar = () => {
-  const { appointments, loading, error } = useContext(AppointmentsContext);
+  const { refreshVersion } = useContext(AppointmentsContext);
   const { userData } = useContext(UserContext);
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const rangeCacheRef = useRef(new Map());
   const { therapists } = useTherapists();
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isPopupVisible, setPopupVisible] = useState(false);
@@ -154,6 +163,10 @@ const TUICalendar = () => {
   const [calendarView, setCalendarView] = useState(() => (
     typeof window !== 'undefined' && window.innerWidth < 720 ? Views.DAY : Views.WEEK
   ));
+
+  useEffect(() => {
+    rangeCacheRef.current.clear();
+  }, [refreshVersion]);
 
   useEffect(() => {
     const updateViewport = () => setIsMobile(window.innerWidth < 720);
@@ -171,6 +184,68 @@ const TUICalendar = () => {
       setCalendarView(calendarViews[0]);
     }
   }, [calendarView, calendarViews]);
+
+  const calendarRange = useMemo(() => {
+    if (calendarView === Views.DAY) {
+      return {
+        from: startOfDay(calendarDate).toISOString(),
+        to: endOfDay(calendarDate).toISOString(),
+      };
+    }
+
+    if (calendarView === Views.MONTH) {
+      return {
+        from: startOfWeek(startOfMonth(calendarDate), { weekStartsOn: 1 }).toISOString(),
+        to: endOfWeek(endOfMonth(calendarDate), { weekStartsOn: 1 }).toISOString(),
+      };
+    }
+
+    return {
+      from: startOfWeek(calendarDate, { weekStartsOn: 1 }).toISOString(),
+      to: endOfWeek(calendarDate, { weekStartsOn: 1 }).toISOString(),
+    };
+  }, [calendarDate, calendarView]);
+
+  useEffect(() => {
+    const cacheKey = `${calendarRange.from}|${calendarRange.to}`;
+    const cachedAppointments = rangeCacheRef.current.get(cacheKey);
+    if (cachedAppointments) {
+      setAppointments(cachedAppointments);
+      setLoading(false);
+      setError(null);
+      return undefined;
+    }
+
+    let isMounted = true;
+    const loadCalendar = async () => {
+      setLoading(true);
+      try {
+        const response = await apiClient.get('/api/schedule/calendar', {
+          params: calendarRange,
+        });
+        if (!isMounted) {
+          return;
+        }
+        const nextAppointments = response.data?.appointments || [];
+        rangeCacheRef.current.set(cacheKey, nextAppointments);
+        setAppointments(nextAppointments);
+        setError(null);
+      } catch (err) {
+        if (isMounted) {
+          setError('Failed to load calendar');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadCalendar();
+    return () => {
+      isMounted = false;
+    };
+  }, [calendarRange, refreshVersion]);
 
   const clinicianOptions = useMemo(() => {
     const base = therapists.map((therapist) => ({
