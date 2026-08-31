@@ -2,14 +2,14 @@
 import { createTheme } from '@mui/material/styles';
 
 const baseColors = {
-  background: '#0D111E',
-  surface: '#1F2937',
-  elevated: '#2B3648',
-  primary: '#A855F7',
-  primaryAlt: '#6366F1',
-  secondary: '#5EEAD4',
+  background: '#0B1220',
+  surface: '#111B2D',
+  elevated: '#18263A',
+  primary: '#5EEAD4',
+  primaryAlt: '#8B5CF6',
+  secondary: '#8B5CF6',
   textPrimary: '#F8FAFC',
-  textSecondary: '#9CA3AF',
+  textSecondary: '#A7B3C5',
 };
 
 const theme = createTheme({
@@ -17,7 +17,7 @@ const theme = createTheme({
     mode: 'dark',
     primary: {
       main: baseColors.primary,
-      contrastText: baseColors.textPrimary,
+      contrastText: '#06211F',
     },
     secondary: {
       main: baseColors.secondary,
@@ -31,28 +31,33 @@ const theme = createTheme({
       primary: baseColors.textPrimary,
       secondary: baseColors.textSecondary,
     },
-    divider: 'rgba(148, 163, 184, 0.18)',
+    success: { main: '#34D399' },
+    warning: { main: '#FBBF24' },
+    error: { main: '#FB7185' },
+    info: { main: '#60A5FA' },
+    divider: 'rgba(148, 163, 184, 0.16)',
   },
   typography: {
     fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     h1: { fontWeight: 600, letterSpacing: '-0.02em' },
     h2: { fontWeight: 600, letterSpacing: '-0.015em' },
-    h3: { fontWeight: 600 },
+    h3: { fontWeight: 600, letterSpacing: '-0.01em' },
     h4: { fontWeight: 500 },
-    h5: { fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em' },
+    h5: { fontWeight: 600, letterSpacing: '-0.01em' },
     button: { textTransform: 'none', fontWeight: 600 },
     body1: { fontSize: '1rem', color: baseColors.textPrimary },
     body2: { fontSize: '0.9375rem', color: baseColors.textSecondary },
   },
   shape: {
-    borderRadius: 18,
+    borderRadius: 12,
   },
   components: {
     MuiCssBaseline: {
       styleOverrides: {
         body: {
           backgroundColor: baseColors.background,
-          backgroundImage: 'linear-gradient(135deg, #2D0F5C 0%, #0B1220 50%, #28124C 100%)',
+          backgroundImage: 'radial-gradient(circle at 88% -12%, rgba(94, 234, 212, 0.10), transparent 28rem), radial-gradient(circle at 8% 0%, rgba(139, 92, 246, 0.12), transparent 32rem)',
+          color: baseColors.textPrimary,
         },
       },
     },
@@ -61,15 +66,15 @@ const theme = createTheme({
         root: {
           backgroundColor: baseColors.surface,
           backgroundImage: 'none',
-          border: '1px solid rgba(255, 255, 255, 0.04)',
+          border: '1px solid rgba(148, 163, 184, 0.16)',
         },
       },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          boxShadow: '0 30px 50px rgba(9, 9, 16, 0.45)',
-          borderRadius: 28,
+          boxShadow: '0 18px 45px rgba(0, 0, 0, 0.20)',
+          borderRadius: 16,
         },
       },
     },
@@ -79,16 +84,15 @@ const theme = createTheme({
       },
       styleOverrides: {
         root: {
-          borderRadius: 999,
-          padding: '10px 22px',
-          backgroundImage: `linear-gradient(120deg, ${baseColors.primary}, ${baseColors.primaryAlt})`,
-          boxShadow: '0 10px 30px rgba(168, 85, 247, 0.35)',
-          color: baseColors.textPrimary,
-          transition: 'transform 200ms ease, box-shadow 200ms ease',
+          borderRadius: 10,
+          padding: '10px 17px',
+          backgroundColor: baseColors.primary,
+          color: '#06211F',
+          transition: 'transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease',
           '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: '0 16px 35px rgba(59, 130, 246, 0.35)',
-            backgroundImage: `linear-gradient(120deg, ${baseColors.primaryAlt}, ${baseColors.primary})`,
+            transform: 'translateY(-1px)',
+            boxShadow: '0 10px 24px rgba(94, 234, 212, 0.18)',
+            backgroundColor: '#99F6E4',
           },
         },
         containedSecondary: {
@@ -99,8 +103,8 @@ const theme = createTheme({
     MuiTableCell: {
       styleOverrides: {
         head: {
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
+          textTransform: 'none',
+          letterSpacing: '0.02em',
           fontSize: '0.75rem',
           color: baseColors.textSecondary,
         },

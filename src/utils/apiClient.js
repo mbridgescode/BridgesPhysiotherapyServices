@@ -2,8 +2,9 @@ import axios from 'axios';
 import { emitAuthTokenChanged } from './authEvents';
 
 const resolveBaseUrl = () => {
-  if (process.env.REACT_APP_API_BASE_URL) {
-    return process.env.REACT_APP_API_BASE_URL.replace(/\/$/, '');
+  const configuredBaseUrl = import.meta.env?.VITE_API_BASE_URL || import.meta.env?.REACT_APP_API_BASE_URL;
+  if (configuredBaseUrl) {
+    return configuredBaseUrl.replace(/\/$/, '');
   }
 
   if (typeof window !== 'undefined' && window.location?.origin) {

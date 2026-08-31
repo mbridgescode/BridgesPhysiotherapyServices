@@ -6,10 +6,13 @@ const Patient = require('../models/patients');
 const User = require('../models/user');
 const Counter = require('../models/counter');
 const { calculateTotals, refreshInvoiceWithPayments } = require('../utils/invoices');
-const { generateInvoicePdf } = require('./pdfService');
 const { getLatestClinicSettings } = require('./clinicSettingsService');
 const { ensureReceiptForPayment } = require('./receiptService');
 const { toPlainObject } = require('../utils/mongoose');
+
+// Spreadsheet imports do not need PDF/Chromium until an import explicitly asks
+// for generated invoice documents.
+const getPdfService = () => require('./pdfService');
 
 const normalizeName = (value) => {
   if (!value) {
@@ -430,6 +433,7 @@ const importPastDataRows = async ({
         })();
 
         try {
+          const { generateInvoicePdf } = getPdfService();
           const pdfResult = await generateInvoicePdf({
             invoice: invoiceForPdf,
             clinicSettings,

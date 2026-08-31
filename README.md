@@ -42,6 +42,11 @@ CORS_ORIGIN=https://your-vercel-app.vercel.app
 RESEND_API_KEY=
 EMAIL_FROM_ADDRESS=no-reply@bridgesphysio.com
 FRONTEND_BASE_URL=https://bridges-physiotherapy-services.vercel.app
+HEIDI_API_KEY=
+HEIDI_REGION=UK
+HEIDI_API_BASE_URL=https://registrar.api.heidihealth.com/api/v2/ml-scribe/open-api
+HEIDI_WIDGET_URL=https://widget.heidihealth.com/widget/heidi.js
+HEIDI_PRODUCT_NAME=Bridges Physiotherapy Services
 STORAGE_ROOT=./storage
 INVOICE_STORAGE_PATH=./storage/invoices
 PDF_TEMP_PATH=./storage/tmp
@@ -66,6 +71,18 @@ npm start            # starts CRA dev server on http://localhost:3001
 
 The frontend expects the API to be available at `REACT_APP_API_BASE_URL`. When running both locally, set `PORT=3001` (CRA default) and keep the API on `3000`.
 
+## Heidi Scribe integration
+
+The appointment treatment-note editor includes a `Use Heidi Scribe` action for administrators and therapists. It opens Heidi's hosted widget with the current patient and appointment context, and places the reviewed standard note back into the editor before it is saved to Bridges.
+
+To enable it:
+
+1. Request a Heidi developer/integration API key and use the region assigned to that key.
+2. Add `HEIDI_API_KEY` and the Heidi settings shown in `.env.example` to the backend environment. The API key is never sent to the browser.
+3. Create or use a Heidi account when the widget opens, then select Heidi's standard note template to stay within the free workflow.
+
+Heidi's free plan currently includes unlimited transcription and standard note generation. Custom templates, Ask Heidi, patient/session linking, and full EHR integrations may have separate limits or plan requirements, so this integration deliberately uses the standard note flow and leaves the final save under clinician control. Availability of the embedded integration itself is controlled by Heidi and the API key associated with the account.
+
 Build the production bundle with:
 
 ```bash
@@ -88,6 +105,23 @@ npm run build
 3. Add `REACT_APP_API_BASE_URL=https://<your-project>.vercel.app/api` to the “Build & Development Settings → Environment Variables” section so the CRA build embeds the correct API origin.
 4. If invoice PDFs need to persist beyond a single request, configure `INVOICE_STORAGE_PATH` and `PDF_TEMP_PATH` to point to durable storage (S3, Azure Blob, etc.). Vercel’s filesystem is ephemeral; by default the app will fall back to `/tmp` inside the function runtime.
 5. Trigger a deployment; Vercel will run `npm install --production=false`, `npm run build`, upload `/build` as static assets, and bundle `api/index.js` (plus all required server files) as a serverless function.
+
+### Preview/UAT database
+
+Preview deployments must use a separate MongoDB database containing synthetic data. Keep the production `MONGODB_URI` assigned to Production in Vercel and assign a URI whose database name contains `uat` to Preview. The UAT URI should not be committed to the repository.
+
+The idempotent seed utility creates test users and synthetic patients, appointments, invoices, payments, notes, communications, settings, templates, and counters. It refuses database names containing `prod`, `live`, or `production`, and it never drops the database:
+
+```bash
+MONGODB_URI="mongodb+srv://.../bridges_physiotherapy_uat" \
+DATA_ENCRYPTION_KEY="a-preview-only-encryption-key" \
+UAT_SEED_PASSWORD="a-preview-only-password" \
+npm run db:seed:uat
+```
+
+For the linked Vercel project, `scripts/db/provisionVercelUat.ps1` automates the one-time setup: it derives the UAT URI from the Production URI, generates Preview-only auth/encryption secrets, seeds the database, and writes only Preview overrides to Vercel. Re-running it resets the seeded accounts to the newly printed password but does not remove other UAT records.
+
+The seeded usernames are `uat-admin`, `uat-therapist`, and `uat-reception`; all use the password supplied through `UAT_SEED_PASSWORD`. Use non-deliverable `example.invalid` addresses for UAT records and leave preview email credentials unset so tests cannot send real messages.
 
 ## Operational Notes
 

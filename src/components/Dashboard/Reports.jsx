@@ -1,0 +1,942 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Box,
+  Button,
+  ButtonGroup,
+  Card,
+  CardContent,
+  CardHeader,
+  CircularProgress,
+  Divider,
+  FormControl,
+  Grid,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TableContainer,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { format, endOfYear, startOfYear, subDays, subMonths } from 'date-fns';
+import ReactApexChart from 'react-apexcharts';
+import apiClient from '../../utils/apiClient';
+
+const currencyFormatter = new Intl.NumberFormat('en-GB', {
+  style: 'currency',
+  currency: 'GBP',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const percentFormatter = new Intl.NumberFormat('en-GB', {
+  style: 'percent',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+const formatCurrency = (value = 0) => currencyFormatter.format(Number(value) || 0);
+const formatPercent = (value = 0) => percentFormatter.format(Number(value) || 0);
+
+const RANGE_OPTIONS = [
+  {
+    key: '30d',
+    label: '30 Days',
+    getRange: () => ({ from: subDays(new Date(), 30), to: new Date() }),
+  },
+  {
+    key: '60d',
+    label: '60 Days',
+    getRange: () => ({ from: subDays(new Date(), 60), to: new Date() }),
+  },
+  {
+    key: '90d',
+    label: '90 Days',
+    getRange: () => ({ from: subDays(new Date(), 90), to: new Date() }),
+  },
+  {
+    key: '1y',
+    label: '1 Year',
+    getRange: () => ({ from: subMonths(new Date(), 12), to: new Date() }),
+  },
+  {
+    key: 'ytd',
+    label: 'Year to Date',
+    getRange: () => ({ from: startOfYear(new Date()), to: new Date() }),
+  },
+  {
+    key: 'all',
+    label: 'All Time',
+    getRange: () => ({ from: new Date(2010, 0, 1), to: new Date() }),
+  },
+];
+
+const formatMonthLabel = (key) => {
+  if (!key) {
+    return 'Unknown';
+  }
+  const [year, month] = key.split('-').map(Number);
+  if (!year || !month) {
+    return key;
+  }
+  return format(new Date(year, month - 1, 1), 'MMM yyyy');
+};
+
+const buildRange = (key) => {
+  const preset = RANGE_OPTIONS.find((option) => option.key === key) || RANGE_OPTIONS[1];
+  return preset.getRange();
+};
+
+const buildYearRange = (year) => ({
+  from: startOfYear(new Date(year, 0, 1)),
+  to: endOfYear(new Date(year, 0, 1)),
+});
+
+const cloneRange = (range) => ({
+  from: range?.from ? new Date(range.from) : null,
+  to: range?.to ? new Date(range.to) : null,
+});
+
+const formatInputDate = (value) => (value ? format(value, 'yyyy-MM-dd') : '');
+
+const REPORTS_PALETTE = {
+  background: '#0B1220',
+  panel: '#111B2D',
+  panelAlt: '#18263A',
+  border: 'rgba(148, 163, 184, 0.16)',
+  textPrimary: '#F8FAFC',
+  textSecondary: '#A7B3C5',
+  accent: '#8B5CF6',
+  accentMuted: 'rgba(139, 92, 246, 0.14)',
+};
+
+const deriveYearsFromRevenue = (revenue = []) => {
+  const yearSet = new Set();
+  revenue.forEach((entry) => {
+    const year = Number(String(entry?._id || '').split('-')[0]);
+    if (Number.isFinite(year)) {
+      yearSet.add(year);
+    }
+  });
+  return Array.from(yearSet).sort((a, b) => b - a);
+};
+
+const Reports = () => {
+  const [metrics, setMetrics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [profitLossData, setProfitLossData] = useState(null);
+  const [profitLossLoading, setProfitLossLoading] = useState(true);
+  const [profitLossError, setProfitLossError] = useState(null);
+  const defaultRange = useMemo(() => buildRange('90d'), []);
+  const [rangeKey, setRangeKey] = useState('90d');
+  const [dateRange, setDateRange] = useState(() => cloneRange(defaultRange));
+  const [customRangeDraft, setCustomRangeDraft] = useState(() => cloneRange(defaultRange));
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
+  const [availableYears, setAvailableYears] = useState([currentYear]);
+  const [yearSelection, setYearSelection] = useState(currentYear);
+
+  const fetchMetrics = useCallback(
+    async (range) => {
+      setLoading(true);
+      try {
+        const params = {};
+        if (range.from) {
+          params.from = range.from.toISOString();
+        }
+        if (range.to) {
+          params.to = range.to.toISOString();
+        }
+        const response = await apiClient.get('/api/reports/dashboard', {
+          params,
+        });
+        setMetrics(response.data.metrics);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to load reports', err);
+        setError('Unable to load reporting data');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    fetchMetrics(dateRange);
+  }, [dateRange, fetchMetrics]);
+
+  const fetchProfitLoss = useCallback(async (range) => {
+    setProfitLossLoading(true);
+    try {
+      const response = await apiClient.get('/api/profit-loss', {
+        params: {
+          start: range.from?.toISOString(),
+          end: range.to?.toISOString(),
+        },
+      });
+      setProfitLossData(response.data);
+      setProfitLossError(null);
+    } catch (err) {
+      console.error('Failed to load profit and loss trend', err);
+      setProfitLossError('Profit data is temporarily unavailable');
+    } finally {
+      setProfitLossLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProfitLoss(dateRange);
+  }, [dateRange, fetchProfitLoss]);
+
+  useEffect(() => {
+    const years = deriveYearsFromRevenue(metrics?.revenueByMonth);
+    if (years.length > 0) {
+      setAvailableYears(years);
+      setYearSelection((prev) => {
+        if (years.includes(prev)) {
+          return prev;
+        }
+        const nextYear = years[0];
+        if (rangeKey.startsWith('year-')) {
+          setRangeKey(`year-${nextYear}`);
+          setDateRange(cloneRange(buildYearRange(nextYear)));
+        }
+        return nextYear;
+      });
+    } else {
+      setAvailableYears([currentYear]);
+      setYearSelection((prev) => {
+        if (prev === currentYear) {
+          return prev;
+        }
+        if (rangeKey.startsWith('year-')) {
+          setRangeKey(`year-${currentYear}`);
+          setDateRange(cloneRange(buildYearRange(currentYear)));
+        }
+        return currentYear;
+      });
+    }
+  }, [metrics, currentYear, rangeKey]);
+
+  useEffect(() => {
+    if (rangeKey !== 'custom') {
+      setCustomRangeDraft(cloneRange(dateRange));
+    }
+  }, [dateRange, rangeKey]);
+
+  const handleRangeChange = (key) => {
+    setRangeKey(key);
+    setDateRange(cloneRange(buildRange(key)));
+  };
+
+  const handleYearSelect = (event) => {
+    const year = Number(event.target.value);
+    setYearSelection(year);
+    setRangeKey(`year-${year}`);
+    setDateRange(cloneRange(buildYearRange(year)));
+  };
+
+  const handleCustomRangeDraftChange = (field, value) => {
+    setCustomRangeDraft((prev) => ({
+      ...prev,
+      [field]: value ? new Date(value) : null,
+    }));
+  };
+
+  const applyCustomRange = () => {
+    if (!customRangeDraft.from || !customRangeDraft.to) {
+      return;
+    }
+    setRangeKey('custom');
+    setDateRange(cloneRange(customRangeDraft));
+  };
+
+  const customRangeValid =
+    Boolean(customRangeDraft.from && customRangeDraft.to) &&
+    customRangeDraft.from <= customRangeDraft.to;
+
+  const palette = REPORTS_PALETTE;
+  const cardBaseSx = useMemo(
+    () => ({
+      height: '100%',
+      background: palette.panel,
+      borderRadius: 3,
+      border: `1px solid ${palette.border}`,
+      boxShadow: '0 25px 45px rgba(5, 8, 25, 0.45)',
+      color: palette.textPrimary,
+    }),
+    [palette.border, palette.panel, palette.textPrimary],
+  );
+
+  const appointments = metrics?.appointments || {};
+  const paymentsProcessed = metrics?.paymentsProcessed || 0;
+  const revenueByMonth = metrics?.revenueByMonth || [];
+  const outstanding = metrics?.outstanding || {};
+
+  const monthlyFinancials = useMemo(() => {
+    const monthMap = new Map();
+    revenueByMonth.forEach((entry) => {
+      if (!entry?._id) {
+        return;
+      }
+      monthMap.set(entry._id, {
+        id: entry._id,
+        billed: Number(entry.totalDue || 0),
+        collected: Number(entry.totalPaid || 0),
+        expenses: 0,
+      });
+    });
+
+    if (!revenueByMonth.length) {
+      (profitLossData?.invoiceEntries || []).forEach((entry) => {
+        const date = new Date(entry.date);
+        if (Number.isNaN(date.getTime())) {
+          return;
+        }
+        const key = format(date, 'yyyy-MM');
+        const current = monthMap.get(key) || {
+          id: key,
+          billed: 0,
+          collected: 0,
+          expenses: 0,
+        };
+        current.billed += Number(entry.amount || 0);
+        monthMap.set(key, current);
+      });
+    }
+
+    (profitLossData?.manualEntries || []).forEach((entry) => {
+      if (entry.type === 'income') {
+        return;
+      }
+      const date = new Date(entry.date);
+      if (Number.isNaN(date.getTime())) {
+        return;
+      }
+      const key = format(date, 'yyyy-MM');
+      const current = monthMap.get(key) || {
+        id: key,
+        billed: 0,
+        collected: 0,
+        expenses: 0,
+      };
+      current.expenses += Number(entry.amount || 0);
+      monthMap.set(key, current);
+    });
+
+    return Array.from(monthMap.values())
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((entry) => ({
+        ...entry,
+        profit: entry.billed - entry.expenses,
+        label: formatMonthLabel(entry.id),
+      }));
+  }, [profitLossData, revenueByMonth]);
+
+  const appointmentTotals = useMemo(() => {
+    const scheduled = appointments.scheduled ?? 0;
+    const completed = appointments.completed ?? 0;
+    const cancelledByPatient = appointments.cancelled_by_patient ?? 0;
+    const cancelledByTherapist = appointments.cancelled_by_therapist ?? 0;
+    const cancelledSameDay = appointments.cancelled_same_day ?? 0;
+    const cancelledLegacy = appointments.cancelled_legacy ?? 0;
+    const cancelled = appointments.cancelled ?? (
+      cancelledByPatient + cancelledByTherapist + cancelledSameDay + cancelledLegacy
+    );
+    const totalCancelled = cancelledByPatient + cancelledByTherapist + cancelledSameDay + cancelledLegacy || cancelled;
+    const total = scheduled + completed + totalCancelled;
+    return {
+      scheduled,
+      completed,
+      cancelled: totalCancelled,
+      cancelledByPatient,
+      cancelledByTherapist,
+      cancelledSameDay,
+      cancelledLegacy,
+      total,
+    };
+  }, [appointments]);
+
+  const financialSeries = useMemo(() => {
+    if (!monthlyFinancials.length) {
+      return [];
+    }
+    const series = [
+      {
+        name: 'Billed',
+        data: monthlyFinancials.map((entry) => entry.billed),
+      },
+      {
+        name: 'Collected',
+        data: monthlyFinancials.map((entry) => entry.collected),
+      },
+    ];
+    if (profitLossData) {
+      series.push({
+        name: 'Profit',
+        data: monthlyFinancials.map((entry) => entry.profit),
+      });
+    }
+    return series;
+  }, [monthlyFinancials, profitLossData]);
+
+  const financialCategories = useMemo(
+    () => monthlyFinancials.map((entry) => entry.label),
+    [monthlyFinancials],
+  );
+
+  const financialChartOptions = useMemo(
+    () => ({
+      chart: {
+        type: 'area',
+        toolbar: { show: false },
+        animations: { easing: 'easeInOut', speed: 600 },
+        foreColor: palette.textSecondary,
+      },
+      stroke: { curve: 'smooth', width: [2, 3, 3] },
+      dataLabels: { enabled: false },
+      fill: {
+        type: 'gradient',
+        gradient: {
+          shadeIntensity: 0.55,
+          opacityFrom: 0.28,
+          opacityTo: 0.03,
+        },
+      },
+      colors: ['#60a5fa', '#5eead4', palette.accent],
+      grid: { borderColor: palette.border },
+      xaxis: {
+        type: 'category',
+        categories: financialCategories,
+        tickAmount: 8,
+        labels: {
+          rotate: -35,
+          style: { colors: palette.textSecondary },
+        },
+        axisBorder: { color: palette.border },
+        axisTicks: { color: palette.border },
+      },
+      yaxis: {
+        labels: {
+          formatter: (val) => `£${(val || 0).toLocaleString('en-GB')}`,
+          style: { colors: palette.textSecondary },
+        },
+      },
+      tooltip: {
+        theme: 'dark',
+        shared: true,
+        y: {
+          formatter: (value) => formatCurrency(value),
+        },
+      },
+      legend: { position: 'top', labels: { colors: palette.textSecondary } },
+    }),
+    [financialCategories, palette.accent, palette.border, palette.textSecondary],
+  );
+
+  const appointmentDonut = useMemo(
+    () => ({
+      options: {
+        chart: { foreColor: palette.textSecondary },
+        labels: [
+          'Scheduled',
+          'Completed',
+          'Cancelled by patient',
+          'Cancelled by therapist',
+          'Cancelled same day',
+          'Cancelled (legacy)',
+        ],
+        colors: ['#94a3b8', '#10b981', '#f59e0b', '#f97316', '#ef4444', '#c084fc'],
+        legend: { position: 'bottom', labels: { colors: palette.textSecondary } },
+        dataLabels: { enabled: false },
+        stroke: { width: 2, colors: [palette.panel] },
+      },
+      series: [
+        appointmentTotals.scheduled,
+        appointmentTotals.completed,
+        appointmentTotals.cancelledByPatient,
+        appointmentTotals.cancelledByTherapist,
+        appointmentTotals.cancelledSameDay,
+        appointmentTotals.cancelledLegacy,
+      ],
+    }),
+    [appointmentTotals, palette.panel, palette.textSecondary],
+  );
+
+  const revenueTableRows = useMemo(() => {
+    if (!revenueByMonth?.length) {
+      return [];
+    }
+    let previousPaid = null;
+    return revenueByMonth.map((entry) => {
+      const paid = Number(entry.totalPaid || 0);
+      const billed = Number(entry.totalDue || 0);
+      const financialEntry = monthlyFinancials.find((month) => month.id === entry._id);
+      const collectionRate = billed ? paid / billed : 0;
+      const growth = previousPaid !== null ? paid - previousPaid : null;
+      previousPaid = paid;
+      return {
+        id: entry._id,
+        label: formatMonthLabel(entry._id),
+        billed,
+        paid,
+        expenses: financialEntry?.expenses ?? null,
+        profit: financialEntry?.profit ?? null,
+        collectionRate,
+        growth,
+      };
+    });
+  }, [monthlyFinancials, revenueByMonth]);
+
+  const insightCards = useMemo(() => {
+    const totalAppointments = appointmentTotals.total || 0;
+    const completionRate = totalAppointments
+      ? appointmentTotals.completed / totalAppointments
+      : 0;
+    const cancellationRate = totalAppointments
+      ? appointmentTotals.cancelled / totalAppointments
+      : 0;
+    const bestMonth = revenueByMonth.reduce(
+      (best, entry) => (entry.totalPaid > (best?.totalPaid || 0) ? entry : best),
+      null,
+    );
+    const avgOutstanding = outstanding.invoiceCount
+      ? (outstanding.totalBalance || 0) / outstanding.invoiceCount
+      : 0;
+
+    return [
+      {
+        title: 'Completion Rate',
+        value: formatPercent(completionRate),
+        helper: `${appointmentTotals.completed} of ${totalAppointments} appointments`,
+      },
+      {
+        title: 'Cancellation Rate',
+        value: formatPercent(cancellationRate),
+        helper: `${appointmentTotals.cancelled} cancellations`,
+      },
+      {
+        title: 'Best Month',
+        value: bestMonth ? formatMonthLabel(bestMonth._id) : 'Not available',
+        helper: bestMonth ? `${formatCurrency(bestMonth.totalPaid)} collected` : 'Need more data',
+      },
+      {
+        title: 'Avg. Outstanding Invoice',
+        value: formatCurrency(avgOutstanding),
+        helper: `${outstanding.invoiceCount || 0} open invoices`,
+      },
+    ];
+  }, [appointmentTotals, outstanding, revenueByMonth]);
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight={320}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return <Typography color="error">{error}</Typography>;
+  }
+
+  const rangeLabel = `${format(dateRange.from, 'dd MMM yyyy')} - ${format(
+    dateRange.to,
+    'dd MMM yyyy',
+  )}`;
+
+  return (
+    <Box
+      sx={{
+        background: `radial-gradient(circle at top, rgba(15,23,42,0.9), ${palette.background})`,
+        borderRadius: 4,
+        p: { xs: 2, md: 3 },
+        color: palette.textPrimary,
+        minHeight: '100%',
+        '& .reports-card': {
+          ...cardBaseSx,
+        },
+        '& .reports-muted': {
+          color: palette.textSecondary,
+        },
+        '& .MuiTable-root th': {
+          borderBottomColor: palette.border,
+          color: palette.textSecondary,
+        },
+        '& .MuiTable-root td': {
+          borderBottomColor: palette.border,
+          color: palette.textPrimary,
+        },
+      }}
+    >
+      <Box
+        mb={3}
+        display="flex"
+        flexWrap="wrap"
+        alignItems="center"
+        justifyContent="space-between"
+        gap={2}
+      >
+        <div>
+          <Typography variant="h5" fontWeight={600}>
+            Reports & Insights
+          </Typography>
+          <Typography variant="body2" className="reports-muted">
+            Showing activity from {rangeLabel}
+          </Typography>
+        </div>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems={{ xs: 'stretch', lg: 'center' }} sx={{ width: { xs: '100%', lg: 'auto' }, minWidth: 0 }}>
+          <Box sx={{ maxWidth: '100%', overflowX: 'auto', pb: { xs: 0.5, lg: 0 } }}>
+            <ButtonGroup variant="outlined" size="small" aria-label="Report date range">
+              {RANGE_OPTIONS.map((option) => (
+                <Button
+                  key={option.key}
+                  onClick={() => handleRangeChange(option.key)}
+                  variant={rangeKey === option.key ? 'contained' : 'outlined'}
+                  sx={{
+                    flex: '0 0 auto',
+                    textTransform: 'none',
+                    borderColor: palette.border,
+                    color: palette.textPrimary,
+                    bgcolor:
+                      rangeKey === option.key ? palette.accentMuted : 'transparent',
+                    '&:hover': {
+                      bgcolor: palette.accentMuted,
+                    },
+                  }}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </ButtonGroup>
+          </Box>
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel sx={{ color: palette.textSecondary }}>Select Year</InputLabel>
+            <Select
+              label="Select Year"
+              value={yearSelection}
+              onChange={handleYearSelect}
+              sx={{
+                color: palette.textPrimary,
+                '.MuiOutlinedInput-notchedOutline': { borderColor: palette.border },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    bgcolor: palette.panel,
+                    color: palette.textPrimary,
+                  },
+                },
+              }}
+              displayEmpty
+            >
+              {availableYears.map((year) => (
+                <MenuItem key={year} value={year}>
+                  {year}
+                </MenuItem>
+              ))}
+              {!availableYears.length && (
+                <MenuItem value={currentYear} disabled>
+                  No data yet
+                </MenuItem>
+              )}
+            </Select>
+          </FormControl>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
+            <TextField
+              type="date"
+              size="small"
+              label="From"
+              value={formatInputDate(customRangeDraft.from)}
+              onChange={(event) => handleCustomRangeDraftChange('from', event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{
+                minWidth: 150,
+                '& .MuiInputBase-root': {
+                  color: palette.textPrimary,
+                },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.border },
+                label: { color: palette.textSecondary },
+              }}
+            />
+            <TextField
+              type="date"
+              size="small"
+              label="To"
+              value={formatInputDate(customRangeDraft.to)}
+              onChange={(event) => handleCustomRangeDraftChange('to', event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{
+                minWidth: 150,
+                '& .MuiInputBase-root': {
+                  color: palette.textPrimary,
+                },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.border },
+                label: { color: palette.textSecondary },
+              }}
+            />
+            <Button
+              size="small"
+              variant="contained"
+              onClick={applyCustomRange}
+              disabled={!customRangeValid}
+              sx={{
+                textTransform: 'none',
+                bgcolor: palette.accent,
+                '&:disabled': { bgcolor: 'rgba(255,255,255,0.1)' },
+              }}
+            >
+              Apply
+            </Button>
+          </Stack>
+        </Stack>
+      </Box>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card className="reports-card">
+            <CardContent>
+              <Typography variant="overline" className="reports-muted">
+                Scheduled
+              </Typography>
+              <Typography variant="h4">{appointmentTotals.scheduled}</Typography>
+              <Typography variant="body2" className="reports-muted">
+                Upcoming appointments
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card className="reports-card">
+            <CardContent>
+              <Typography variant="overline" className="reports-muted">
+                Completed
+              </Typography>
+              <Typography variant="h4" color="success.main">
+                {appointmentTotals.completed}
+              </Typography>
+              <Typography variant="body2" className="reports-muted">
+                {formatPercent(
+                  appointmentTotals.total
+                    ? appointmentTotals.completed / appointmentTotals.total
+                    : 0,
+                )}{' '}
+                completion rate
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card className="reports-card">
+            <CardContent>
+              <Typography variant="overline" className="reports-muted">
+                Cancelled
+              </Typography>
+              <Typography variant="h4" color="warning.main">
+                {appointmentTotals.cancelled}
+              </Typography>
+              <Typography variant="body2" className="reports-muted">
+                {formatPercent(
+                  appointmentTotals.total
+                    ? appointmentTotals.cancelled / appointmentTotals.total
+                    : 0,
+                )}{' '}
+                cancellation rate
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card className="reports-card">
+            <CardContent>
+              <Typography variant="overline" className="reports-muted">
+                Payments Processed
+              </Typography>
+              <Typography variant="h4">{formatCurrency(paymentsProcessed)}</Typography>
+              <Typography variant="body2" className="reports-muted">
+                Across the selected period
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card className="reports-card">
+            <CardHeader
+              title="Cash & profit trend"
+              subheader="See what was billed, collected, and retained after recorded expenses."
+              sx={{ color: palette.textPrimary }}
+              subheaderTypographyProps={{ sx: { color: palette.textSecondary } }}
+            />
+            <CardContent sx={{ minWidth: 0 }}>
+              {financialSeries.length ? (
+                <ReactApexChart
+                  type="area"
+                  options={financialChartOptions}
+                  series={financialSeries}
+                  height={340}
+                />
+              ) : (
+                <Typography variant="body2" className="reports-muted">
+                  Not enough revenue data for this date range.
+                </Typography>
+              )}
+              {profitLossLoading && (
+                <Typography variant="caption" className="reports-muted">
+                  Updating the profit line…
+                </Typography>
+              )}
+              {profitLossError && (
+                <Typography variant="caption" color="warning.main">
+                  {profitLossError}; the chart is showing billed and collected values only.
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={5}>
+          <Card className="reports-card">
+            <CardHeader title="Appointment Mix" sx={{ color: palette.textPrimary }} />
+            <CardContent>
+              {appointmentTotals.total ? (
+                <ReactApexChart
+                  type="donut"
+                  options={appointmentDonut.options}
+                  series={appointmentDonut.series}
+                  height={280}
+                />
+              ) : (
+                <Typography variant="body2" className="reports-muted">
+                  No appointments recorded for this range.
+                </Typography>
+              )}
+              <Divider sx={{ my: 2, borderColor: palette.border }} />
+              <Stack spacing={1}>
+                <Typography variant="body2">
+                  Completion rate: <strong>{formatPercent(appointmentTotals.completed / (appointmentTotals.total || 1))}</strong>
+                </Typography>
+                <Typography variant="body2">
+                  Cancellation rate: <strong>{formatPercent(appointmentTotals.cancelled / (appointmentTotals.total || 1))}</strong>
+                </Typography>
+                <Typography variant="body2" className="reports-muted">
+                  Patient: {appointmentTotals.cancelledByPatient} · Therapist: {appointmentTotals.cancelledByTherapist} · Same day: {appointmentTotals.cancelledSameDay}
+                </Typography>
+                <Typography variant="body2">
+                  Open invoices: <strong>{outstanding.invoiceCount || 0}</strong> ({formatCurrency(outstanding.totalBalance || 0)})
+                </Typography>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card className="reports-card" sx={{ height: '100%' }}>
+            <CardHeader title="Monthly Revenue Breakdown" sx={{ color: palette.textPrimary }} />
+            <CardContent sx={{ pt: 0 }}>
+              {revenueTableRows.length ? (
+                <TableContainer sx={{ overflowX: 'auto' }}>
+                  <Table size="small" sx={{ minWidth: 820 }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Month</TableCell>
+                        <TableCell align="right">Billed</TableCell>
+                        <TableCell align="right">Collected</TableCell>
+                        <TableCell align="right">Expenses</TableCell>
+                        <TableCell align="right">Profit</TableCell>
+                        <TableCell align="right">Collection Rate</TableCell>
+                        <TableCell align="right">Delta vs Prev</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {revenueTableRows.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell>{row.label}</TableCell>
+                          <TableCell align="right">{formatCurrency(row.billed)}</TableCell>
+                          <TableCell align="right">{formatCurrency(row.paid)}</TableCell>
+                          <TableCell align="right">
+                            {row.expenses === null ? '—' : formatCurrency(row.expenses)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{
+                              color: row.profit === null || row.profit >= 0 ? 'success.main' : 'error.main',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {row.profit === null ? '—' : formatCurrency(row.profit)}
+                          </TableCell>
+                          <TableCell align="right">{formatPercent(row.collectionRate)}</TableCell>
+                          <TableCell
+                            align="right"
+                            sx={{
+                              color:
+                                row.growth === null || row.growth >= 0
+                                  ? 'success.main'
+                                  : 'error.main',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {row.growth === null
+                              ? '--'
+                              : `${row.growth >= 0 ? '+' : '-'}${formatCurrency(
+                                  Math.abs(row.growth),
+                                )}`}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Typography variant="body2" className="reports-muted" sx={{ p: 2 }}>
+                  No revenue history to display.
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={7}>
+          <Card className="reports-card" sx={{ height: '100%' }}>
+            <CardHeader title="Insight Highlights" sx={{ color: palette.textPrimary }} />
+            <CardContent>
+              <Stack spacing={2}>
+                {insightCards.map((insight) => (
+                  <Box
+                    key={insight.title}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: palette.border,
+                      borderRadius: 2,
+                      p: 2,
+                      background: palette.panelAlt,
+                    }}
+                  >
+                    <Typography variant="overline" className="reports-muted">
+                      {insight.title}
+                    </Typography>
+                    <Typography variant="h5" fontWeight={600}>
+                      {insight.value}
+                    </Typography>
+                    <Typography variant="body2" className="reports-muted">
+                      {insight.helper}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
+
+export default Reports;

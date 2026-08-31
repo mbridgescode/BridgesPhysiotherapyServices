@@ -1,10 +1,13 @@
 const express = require('express');
 const multer = require('multer');
-const ExcelJS = require('exceljs');
 const { authenticate, authorize } = require('../middleware/auth');
 const { importPastDataRows } = require('../services/pastDataImportService');
 
 const router = express.Router();
+
+// Spreadsheet parsing is only needed by the import action, not while the API
+// router is being initialized for ordinary requests.
+const getExcelJs = () => require('exceljs');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -56,6 +59,7 @@ const extractRowsFromWorksheet = (worksheet) => {
 };
 
 const parseSpreadsheetBuffer = async (buffer) => {
+  const ExcelJS = getExcelJs();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
   const worksheet = workbook.worksheets[0];
@@ -120,4 +124,3 @@ router.post(
 );
 
 module.exports = router;
-

@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser');
 const authRouter = require('../src/routes/auth');
 const userRouter = require('../src/routes/users');
 const appointmentsRouter = require('../src/routes/appointments');
+const scheduleRouter = require('../src/routes/schedule');
 const patientsRouter = require('../src/routes/patients');
 const paymentsRouter = require('../src/routes/payments');
 const notesRouter = require('../src/routes/notes');
@@ -21,6 +22,7 @@ const treatmentNoteTemplatesRouter = require('../src/routes/treatmentNoteTemplat
 const gpLetterTemplatesRouter = require('../src/routes/gpLetterTemplates');
 const communicationsRouter = require('../src/routes/communications');
 const importsRouter = require('../src/routes/imports');
+const heidiRouter = require('../src/routes/heidi');
 const {
   host,
   corsOrigin,
@@ -90,6 +92,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/auth', authRouter);
 app.use('/api/users', userRouter);
 app.use('/api/appointments', appointmentsRouter);
+app.use('/api/schedule', scheduleRouter);
 app.use('/api/patients', patientsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/notes', notesRouter);
@@ -105,6 +108,7 @@ app.use('/api/treatment-note-templates', treatmentNoteTemplatesRouter);
 app.use('/api/gp-letter-templates', gpLetterTemplatesRouter);
 app.use('/api/communications', communicationsRouter);
 app.use('/api/imports', importsRouter);
+app.use('/api/heidi', heidiRouter);
 
 app.get('/healthz', (req, res) => {
   res.json({ status: 'ok', environment: nodeEnv, timestamp: new Date().toISOString() });

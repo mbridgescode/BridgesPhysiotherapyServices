@@ -9,7 +9,7 @@ const Note = require('../models/notes');
 const Counter = require('../models/counter');
 const User = require('../models/user');
 const { authenticate, authorize } = require('../middleware/auth');
-const { fetchPaymentStatus } = require('../utils/payments');
+const { fetchPaymentStatuses } = require('../utils/payments');
 const { recordAuditEvent } = require('../utils/audit');
 const { buildTokensFromSearchQuery } = require('../utils/patientSecurity');
 const { toPlainObject } = require('../utils/mongoose');
@@ -137,11 +137,7 @@ router.get(
   },
 );
 
-router.get(
-  '/',
-  authenticate,
-  authorize('admin', 'therapist', 'receptionist'),
-  async (req, res, next) => {
+const listPatients = async (req, res, next) => {
     try {
       const {
         search,
@@ -150,6 +146,8 @@ router.get(
         limit = 100,
         offset = 0,
         view,
+        summary,
+        includeAppointments,
       } = req.query;
 
       const query = {};
@@ -200,12 +198,26 @@ router.get(
         return numeric;
       })();
 
+      const summaryMode = summary === true || summary === 'true';
+      const includeAppointmentHistory = summaryMode
+        && (includeAppointments === true || includeAppointments === 'true');
+
       const [patientDocs, totalCount] = await Promise.all([
-        Patient.find(query)
-          .sort({ updatedAt: -1 })
-          .skip(parsedOffset)
-          .limit(parsedLimit)
-          .populate('primaryTherapist', 'name username email role employeeID'),
+        (() => {
+          const patientQuery = Patient.find(query)
+            .sort({ updatedAt: -1 })
+            .skip(parsedOffset)
+            .limit(parsedLimit)
+            .populate('primaryTherapist', 'name username email role employeeID');
+          if (summaryMode) {
+            patientQuery.select(
+              'patient_id first_name surname preferred_name email phone '
+              + 'primary_contact_name primary_contact_email primary_contact_phone '
+              + 'address billing_mode email_active status primary_therapist_id primaryTherapist',
+            );
+          }
+          return patientQuery;
+        })(),
         Patient.countDocuments(query),
       ]);
 
@@ -213,11 +225,49 @@ router.get(
 
       const patientIds = patients.map((patient) => patient.patient_id);
 
-      const [appointmentDocs, invoiceDocs, noteDocs] = await Promise.all([
-        Appointment.find({ patient_id: { $in: patientIds } }),
-        Invoice.find({ patient_id: { $in: patientIds } }),
-        Note.find({ patient_id: { $in: patientIds } }),
-      ]);
+      const [appointmentDocs, invoiceDocs, noteDocs] = summaryMode
+        ? includeAppointmentHistory
+          ? await Promise.all([
+            Appointment.find({ patient_id: { $in: patientIds } })
+              .select('appointment_id patient_id date status treatment_description'),
+            [],
+            [],
+          ])
+          : await Promise.all([
+            Appointment.aggregate([
+              {
+                $match: {
+                  patient_id: { $in: patientIds },
+                  status: 'scheduled',
+                },
+              },
+              { $sort: { patient_id: 1, date: 1 } },
+              {
+                $group: {
+                  _id: '$patient_id',
+                  appointment: { $first: '$$ROOT' },
+                },
+              },
+              { $replaceRoot: { newRoot: '$appointment' } },
+              {
+                $project: {
+                  _id: 0,
+                  appointment_id: 1,
+                  patient_id: 1,
+                  date: 1,
+                  status: 1,
+                  treatment_description: 1,
+                },
+              },
+            ]),
+            [],
+            [],
+          ])
+        : await Promise.all([
+          Appointment.find({ patient_id: { $in: patientIds } }),
+          Invoice.find({ patient_id: { $in: patientIds } }),
+          Note.find({ patient_id: { $in: patientIds } }),
+        ]);
 
       const appointments = appointmentDocs.map(toPlainObject);
       const invoices = invoiceDocs.map(toPlainObject);
@@ -241,14 +291,35 @@ router.get(
         return acc;
       }, {});
 
+      if (summaryMode) {
+        const summaryResult = patients.map((patient) => {
+          const patientAppointments = appointmentsByPatient[patient.patient_id] || [];
+          return {
+            ...patient,
+            appointments: includeAppointmentHistory ? patientAppointments : [],
+            upcomingAppointment: patientAppointments[0] || null,
+          };
+        });
+
+        const scopedSummaryResult = (req.user.role === 'admin' || therapistViewingAll)
+          ? summaryResult
+          : summaryResult.filter((patient) => userCanAccessPatient(patient, req.user));
+
+        return res.json({
+          success: true,
+          patients: scopedSummaryResult,
+          total: totalCount,
+        });
+      }
+
+      const paymentStatuses = await fetchPaymentStatuses(appointments);
+
       const result = await Promise.all(patients.map(async (patient) => {
         const patientAppointments = appointmentsByPatient[patient.patient_id] || [];
-        const appointmentsWithPayment = await Promise.all(
-          patientAppointments.map(async (appointment) => ({
-            ...appointment,
-            paymentStatus: await fetchPaymentStatus(appointment.appointment_id, appointment.price),
-          })),
-        );
+        const appointmentsWithPayment = patientAppointments.map((appointment) => ({
+          ...appointment,
+          paymentStatus: paymentStatuses.get(String(appointment.appointment_id)) || 'Pending',
+        }));
 
         return {
           ...patient,
@@ -273,6 +344,22 @@ router.get(
     } catch (error) {
       next(error);
     }
+};
+
+router.get(
+  '/',
+  authenticate,
+  authorize('admin', 'therapist', 'receptionist'),
+  listPatients,
+);
+
+router.get(
+  '/list',
+  authenticate,
+  authorize('admin', 'therapist', 'receptionist'),
+  (req, res, next) => {
+    req.query.summary = 'true';
+    return listPatients(req, res, next);
   },
 );
 
@@ -661,12 +748,11 @@ router.get(
       const invoices = toPlainObject(invoiceDocs);
       const notes = toPlainObject(noteDocs);
 
-      const appointmentsWithStatus = await Promise.all(
-        appointments.map(async (appointment) => ({
-          ...appointment,
-          paymentStatus: await fetchPaymentStatus(appointment.appointment_id, appointment.price),
-        })),
-      );
+      const paymentStatuses = await fetchPaymentStatuses(appointments);
+      const appointmentsWithStatus = appointments.map((appointment) => ({
+        ...appointment,
+        paymentStatus: paymentStatuses.get(String(appointment.appointment_id)) || 'Pending',
+      }));
 
       res.json({
         success: true,

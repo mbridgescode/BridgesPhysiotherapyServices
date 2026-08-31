@@ -4,9 +4,12 @@ const Payment = require('../models/payments');
 const Invoice = require('../models/invoices');
 const Patient = require('../models/patients');
 const Counter = require('../models/counter');
-const { generateReceiptPdf } = require('./pdfService');
 const { getLatestClinicSettings } = require('./clinicSettingsService');
 const { toPlainObject } = require('../utils/mongoose');
+
+// PDF rendering pulls in Chromium and is only needed for receipt generation.
+// Keep it out of the normal API cold-start path until a receipt is actually used.
+const getPdfService = () => require('./pdfService');
 
 const RECEIPT_PREFIX = 'RCT';
 
@@ -187,6 +190,7 @@ const ensureReceiptForPayment = async ({
   let receiptForPdf = null;
 
   if (shouldGeneratePdf) {
+    const { generateReceiptPdf } = getPdfService();
     const billingContact = resolveReceiptContact(receipt, toPlainObject(patientDoc) || {});
     receiptForPdf = buildReceiptExportPayload({
       receipt,

@@ -9,18 +9,21 @@ const Counter = require('../models/counter');
 const Service = require('../models/service');
 const Invoice = require('../models/invoices');
 const { authenticate, authorize } = require('../middleware/auth');
-const { fetchPaymentStatus } = require('../utils/payments');
+const { fetchPaymentStatuses } = require('../utils/payments');
 const { recordAuditEvent } = require('../utils/audit');
 const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
 const { buildBookingConfirmationEmail } = require('../templates/email/bookingConfirmationEmail');
 const { buildInvoiceDeliveryEmail, buildCancellationFeeInvoiceEmail } = require('../templates/email/invoiceDeliveryEmail');
-const { generateInvoicePdf } = require('../services/pdfService');
 const { calculateTotals } = require('../utils/invoices');
 const { toPlainObject } = require('../utils/mongoose');
 const { buildRescheduleConfirmationEmail } = require('../templates/email/rescheduleConfirmationEmail');
 
 const router = express.Router();
+
+// PDF generation is only used when an appointment workflow creates an invoice.
+// Defer Chromium and Puppeteer initialization for ordinary appointment reads.
+const getPdfService = () => require('../services/pdfService');
 
 const normalizeAppointmentId = (value) => {
   const numeric = Number(value);
@@ -273,6 +276,7 @@ const createAutomaticInvoice = async ({ appointment, patient, outcome, actorId }
     billing_contact_phone: billingContact.phone,
   };
 
+  const { generateInvoicePdf } = getPdfService();
   const { pdfPath, pdfBuffer, html } = await generateInvoicePdf({
     invoice: invoiceForEmail,
     clinicSettings: settings,
@@ -399,7 +403,14 @@ router.get(
   authorize('admin', 'therapist', 'receptionist'),
   async (req, res, next) => {
     try {
-      const { employeeID, status, from, to, includeCancelled } = req.query;
+      const {
+        employeeID,
+        status,
+        from,
+        to,
+        includeCancelled,
+        summary,
+      } = req.query;
       const query = {};
       applyFilters(query, { employeeID, status, from, to, includeCancelled });
       if (req.user.role !== 'admin') {
@@ -410,16 +421,20 @@ router.get(
         }
       }
 
-      const appointmentDocs = await Appointment.find(query)
-        .sort({ date: 1 });
+      const summaryMode = summary === true || summary === 'true';
+      const appointmentQuery = Appointment.find(query);
+      if (summaryMode) {
+        // Schedule and dashboard reads never need the potentially large clinical note history.
+        appointmentQuery.select('-clinical_notes');
+      }
+      const appointmentDocs = await appointmentQuery.sort({ date: 1 });
       const appointments = toPlainObject(appointmentDocs);
 
-      const appointmentsWithStatus = await Promise.all(
-        appointments.map(async (appointment) => ({
-          ...appointment,
-          paymentStatus: await fetchPaymentStatus(appointment.appointment_id, appointment.price),
-        })),
-      );
+      const paymentStatuses = await fetchPaymentStatuses(appointments);
+      const appointmentsWithStatus = appointments.map((appointment) => ({
+        ...appointment,
+        paymentStatus: paymentStatuses.get(String(appointment.appointment_id)) || 'Pending',
+      }));
 
       res.json({
         success: true,

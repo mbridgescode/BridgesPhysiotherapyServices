@@ -8,7 +8,6 @@ const Counter = require('../models/counter');
 const Payment = require('../models/payments');
 const { authenticate, authorize } = require('../middleware/auth');
 const { recordAuditEvent } = require('../utils/audit');
-const { generateInvoicePdf, generatePaymentSummaryPdf } = require('../services/pdfService');
 const { sendTransactionalEmail } = require('../services/emailService');
 const { getLatestClinicSettings } = require('../services/clinicSettingsService');
 const { ensureReceiptForPayment } = require('../services/receiptService');
@@ -22,6 +21,10 @@ const {
 } = require('../services/paymentSummaryService');
 
 const router = express.Router();
+
+// Invoice and payment-summary PDFs are on-demand actions. Keep Chromium out
+// of the normal invoice list/detail cold-start path.
+const getPdfService = () => require('../services/pdfService');
 
 const buildPatientDisplayName = (patient) => {
   const parts = [patient?.first_name, patient?.surname].filter(Boolean);
@@ -492,6 +495,7 @@ router.post(
       }
 
       const settings = await resolveSettings();
+      const { generatePaymentSummaryPdf } = getPdfService();
       const { pdfBuffer } = await generatePaymentSummaryPdf({
         summary,
         clinicSettings: settings,
@@ -693,6 +697,7 @@ router.post(
         billingContact,
       });
 
+      const { generateInvoicePdf } = getPdfService();
       const { pdfPath, pdfBuffer, html } = await generateInvoicePdf({
         invoice: invoiceForPdf,
         clinicSettings: settings,
@@ -890,6 +895,7 @@ router.get(
       });
 
       const renderStart = Date.now();
+      const { generateInvoicePdf } = getPdfService();
       const { pdfPath, pdfBuffer, html } = await generateInvoicePdf({
         invoice: invoiceForExport,
         clinicSettings: settings,
@@ -958,6 +964,7 @@ router.post(
         billingContact,
       });
 
+      const { generateInvoicePdf } = getPdfService();
       const { pdfPath, pdfBuffer, html } = await generateInvoicePdf({
         invoice: invoiceForExport,
         clinicSettings: settings,
